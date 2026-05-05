@@ -8,7 +8,7 @@ No hidden services. No telemetry. No third-party backdoors. Fully auditable.
 
 ## What This Is
 
-This project replaces the proprietary BitHarvest Luna Unifi platform that ships on the SenseCap M1. It provides a clean, minimal stack using only open-source components:
+This project replaces the default platform that ships on the SenseCap M1. It provides a clean, minimal stack using only open-source components:
 
 - **Semtech `lora_pkt_fwd`** — the reference packet forwarder for the SX1302 concentrator
 - **Helium `gateway-rs`** — lightweight Helium network gateway daemon
@@ -21,7 +21,7 @@ The goal is a gateway you can fully understand, audit, and trust — running on 
 
 ## What This Is NOT
 
-- Not affiliated with Seeed Studio, the Helium Foundation, or BitHarvest
+- Not affiliated with Seeed Studio or the Helium Foundation
 - Not a general-purpose LoRaWAN gateway platform (SenseCap M1 hardware only — no abstraction sprawl)
 - Not a cloud service — your gateway, your keys, your data
 
