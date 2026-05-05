@@ -1,0 +1,86 @@
+{
+    "SX130x_conf": {
+        "com_type": "SPI",
+        "com_path": "/dev/spidev0.0",
+        "lorawan_public": true,
+        "clksrc": 1,
+        "antenna_gain": 0,
+        "full_duplex": false,
+        "fine_timestamp": {
+            "enable": false,
+            "mode": "all_sf"
+        },
+        "radio_0": {
+            "enable": true,
+            "type": "SX1250",
+            "freq": 869000000,
+            "rssi_offset": -215.4,
+            "rssi_tcomp": {"coeff_a": 0, "coeff_b": 0, "coeff_c": 20.41, "coeff_d": 2162.56, "coeff_e": 0},
+            "tx_enable": true,
+            "tx_freq_min": 864000000,
+            "tx_freq_max": 870000000
+        },
+        "radio_1": {
+            "enable": true,
+            "type": "SX1250",
+            "freq": 864500000,
+            "rssi_offset": -215.4,
+            "rssi_tcomp": {"coeff_a": 0, "coeff_b": 0, "coeff_c": 20.41, "coeff_d": 2162.56, "coeff_e": 0},
+            "tx_enable": false
+        },
+        "chan_multiSF_All": {
+            "spreading_factor_enable": [5, 6, 7, 8, 9, 10, 11, 12]
+        },
+        "chan_multiSF_0": {"enable": true,  "radio": 0, "if": -300000},
+        "chan_multiSF_1": {"enable": true,  "radio": 0, "if": -100000},
+        "chan_multiSF_2": {"enable": true,  "radio": 0, "if": 100000},
+        "chan_multiSF_3": {"enable": true,  "radio": 0, "if": 300000},
+        "chan_multiSF_4": {"enable": true,  "radio": 1, "if": -400000},
+        "chan_multiSF_5": {"enable": true,  "radio": 1, "if": -200000},
+        "chan_multiSF_6": {"enable": true,  "radio": 1, "if": 0},
+        "chan_multiSF_7": {"enable": true,  "radio": 1, "if": 200000},
+        "chan_Lora_std": {
+            "enable": false,
+            "radio": 0,
+            "if": -100000,
+            "bandwidth": 125000,
+            "spread_factor": 7,
+            "implicit_hdr": false,
+            "implicit_payload_length": 17,
+            "implicit_crc_en": false,
+            "implicit_coderate": 1
+        },
+        "chan_FSK": {
+            "enable": true,
+            "radio": 0,
+            "if": 300000,
+            "bandwidth": 125000,
+            "datarate": 50000
+        }
+    },
+    "gateway_conf": {
+        "gateway_ID": "",
+        "server_address": "127.0.0.1",
+        "serv_port_up": 1680,
+        "serv_port_down": 1680,
+        "keepalive_interval": 10,
+        "stat_interval": 30,
+        "push_timeout_ms": 100,
+        "forward_crc_valid": true,
+        "forward_crc_error": false,
+        "forward_crc_disabled": false,
+        "gps_tty_path": "fake",
+        "fake_gps": true,
+        "ref_latitude": 0,
+        "ref_longitude": 0,
+        "ref_altitude": 0,
+        "beaconing": {
+            "period": 0,
+            "freq_hz": 0,
+            "datarate": 0,
+            "bandwidth": 0,
+            "tx_power": 0,
+            "gateway_specific": false
+        }
+    }
+}
