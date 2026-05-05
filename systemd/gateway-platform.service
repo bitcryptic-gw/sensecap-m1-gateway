@@ -1,0 +1,15 @@
+[Unit]
+Description=SenseCap M1 Gateway Platform Init
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/gateway/scripts/first-boot.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gateway-platform
+
+[Install]
+WantedBy=multi-user.target

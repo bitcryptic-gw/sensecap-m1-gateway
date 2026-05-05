@@ -1,0 +1,19 @@
+[Unit]
+Description=LoRa Packet Forwarder (SenseCap M1 / SX1302 CoreCell)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gateway/pktfwd
+ExecStartPre=/opt/gateway/scripts/reset_lgw.sh start
+ExecStart=/usr/local/bin/lora_pkt_fwd -c /opt/gateway/config/global_conf.json
+ExecStopPost=/opt/gateway/scripts/reset_lgw.sh stop
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pktfwd
+
+[Install]
+WantedBy=multi-user.target

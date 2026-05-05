@@ -1,0 +1,42 @@
+# Runtime configs (generated at boot)
+config/global_conf.json
+config/local_conf.json
+
+# User's live credentials / config
+config.env
+
+# Logs and databases
+*.log
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Shell
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.iml
+
+# Temp
+*.tmp
+*.bak

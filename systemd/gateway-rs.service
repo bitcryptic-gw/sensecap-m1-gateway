@@ -1,0 +1,22 @@
+[Unit]
+Description=Helium Gateway (gateway-rs)
+After=pktfwd.service
+Requires=pktfwd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/docker run --rm \
+  --name gateway-rs \
+  --privileged \
+  --network host \
+  --device /dev/i2c-1 \
+  -v /opt/gateway/config/settings.toml:/etc/helium_gateway/settings.toml:ro \
+  quay.io/team-helium/miner:gateway-latest
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gateway-rs
+
+[Install]
+WantedBy=multi-user.target
