@@ -1,0 +1,135 @@
+#!/bin/bash
+# First-boot initialisation for SenseCap M1 gateway platform.
+# Idempotent — safe to re-run. Skips if sentinel file exists.
+set -euo pipefail
+
+SENTINEL="/opt/gateway/.configured"
+CONFIG_DIR="/opt/gateway/config"
+ENV_FILE="/opt/gateway/config.env"
+LOG_FILE="/var/log/gateway-first-boot.log"
+SCRIPTS_DIR="/opt/gateway/scripts"
+
+log() {
+    local msg="[first-boot] $*"
+    echo "$msg"
+    echo "$(date -Iseconds) $msg" >> "$LOG_FILE"
+}
+
+# --- Idempotency guard ---
+if [ -f "$SENTINEL" ]; then
+    log "Sentinel found at ${SENTINEL}. First-boot already completed. Exiting."
+    exit 0
+fi
+
+log "Starting SenseCap M1 first-boot initialisation..."
+
+# --- Source config.env ---
+BAND="au_915_928"
+GPS_LATITUDE=""
+GPS_LONGITUDE=""
+GPS_ALTITUDE=0
+TAILSCALE_AUTHKEY=""
+CUSTOM_HOSTNAME=""
+
+if [ -f "$ENV_FILE" ]; then
+    log "Sourcing ${ENV_FILE}..."
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    CUSTOM_HOSTNAME="${HOSTNAME:-}"
+    # Unset shell HOSTNAME so we can control it explicitly
+    unset HOSTNAME 2>/dev/null || true
+fi
+
+# --- Validate BAND ---
+VALID_BANDS="au_915_928 us_902_928 eu_863_870 as_923_1 as_923_2 in_865_867 kr_920_923 ru_864_870 cn_470_510"
+BAND_VALID=false
+for b in $VALID_BANDS; do
+    if [ "$BAND" = "$b" ]; then BAND_VALID=true; break; fi
+done
+if [ "$BAND_VALID" = false ]; then
+    log "ERROR: Invalid BAND '${BAND}'. Valid: ${VALID_BANDS}"
+    exit 1
+fi
+
+# --- Validate GPS coordinates ---
+if [ -n "$GPS_LATITUDE" ] && ! echo "$GPS_LATITUDE" | grep -qE '^-?[0-9]+(\.[0-9]+)?$'; then
+    log "ERROR: GPS_LATITUDE is not a valid number: ${GPS_LATITUDE}"
+    exit 1
+fi
+if [ -n "$GPS_LONGITUDE" ] && ! echo "$GPS_LONGITUDE" | grep -qE '^-?[0-9]+(\.[0-9]+)?$'; then
+    log "ERROR: GPS_LONGITUDE is not a valid number: ${GPS_LONGITUDE}"
+    exit 1
+fi
+
+# --- Derive Gateway EUI from eth0 MAC ---
+log "Deriving Gateway EUI from eth0 MAC..."
+mac=$(cat /sys/class/net/eth0/address)
+mac_clean=$(echo "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')
+GATEWAY_EUI="${mac_clean:0:6}FFFE${mac_clean:6:6}"
+log "Gateway EUI: ${GATEWAY_EUI}"
+
+# --- Set hostname ---
+if [ -n "$CUSTOM_HOSTNAME" ]; then
+    NEW_HOSTNAME="$CUSTOM_HOSTNAME"
+else
+    mac_last6=$(echo "$mac_clean" | tr '[:upper:]' '[:lower:]' | tail -c 7)
+    NEW_HOSTNAME="sensecap-${mac_last6}"
+fi
+log "Setting hostname to: ${NEW_HOSTNAME}"
+echo "$NEW_HOSTNAME" > /etc/hostname
+hostnamectl set-hostname "$NEW_HOSTNAME" || true
+
+# --- Enable SPI and I2C ---
+log "Ensuring SPI and I2C are enabled..."
+raspi-config nonint do_spi 0   || log "WARNING: raspi-config do_spi failed (may already be enabled)"
+raspi-config nonint do_i2c 0   || log "WARNING: raspi-config do_i2c failed (may already be enabled)"
+
+# --- Apply frequency band ---
+log "Applying frequency band: ${BAND}"
+"${SCRIPTS_DIR}/apply-band.sh" "$BAND"
+
+# --- Inject Gateway EUI ---
+log "Injecting Gateway EUI into global_conf.json..."
+jq --arg id "$GATEWAY_EUI" \
+    '.gateway_conf.gateway_ID = $id' \
+    "${CONFIG_DIR}/global_conf.json" > /tmp/global_conf_tmp.json
+mv /tmp/global_conf_tmp.json "${CONFIG_DIR}/global_conf.json"
+
+# --- Inject GPS coordinates if set ---
+if [ -n "$GPS_LATITUDE" ] && [ -n "$GPS_LONGITUDE" ]; then
+    log "Injecting GPS coordinates: lat=${GPS_LATITUDE}, lon=${GPS_LONGITUDE}, alt=${GPS_ALTITUDE:-0}"
+    jq \
+        --argjson lat "${GPS_LATITUDE}" \
+        --argjson lon "${GPS_LONGITUDE}" \
+        --argjson alt "${GPS_ALTITUDE:-0}" \
+        '.gateway_conf.ref_latitude  = $lat |
+         .gateway_conf.ref_longitude = $lon |
+         .gateway_conf.ref_altitude  = $alt' \
+        "${CONFIG_DIR}/global_conf.json" > /tmp/global_conf_tmp.json
+    mv /tmp/global_conf_tmp.json "${CONFIG_DIR}/global_conf.json"
+fi
+
+# --- Tailscale setup ---
+if [ -n "$TAILSCALE_AUTHKEY" ]; then
+    log "Configuring Tailscale (key redacted from log)..."
+    tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$NEW_HOSTNAME" || \
+        log "WARNING: tailscale up failed. Check that tailscaled is running."
+
+    # Remove auth key from config.env — it is one-time use
+    log "Removing TAILSCALE_AUTHKEY from config.env..."
+    sed -i 's/^TAILSCALE_AUTHKEY=.*/TAILSCALE_AUTHKEY=/' "$ENV_FILE" || true
+    log "TAILSCALE_AUTHKEY cleared."
+fi
+
+# --- Enable and start services ---
+log "Enabling and starting pktfwd.service..."
+systemctl enable pktfwd.service
+systemctl start  pktfwd.service
+
+log "Enabling and starting gateway-rs.service..."
+systemctl enable gateway-rs.service
+systemctl start  gateway-rs.service
+
+# --- Write sentinel ---
+touch "$SENTINEL"
+log "First-boot initialisation complete. Sentinel written to ${SENTINEL}."
