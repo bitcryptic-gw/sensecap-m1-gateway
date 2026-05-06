@@ -3,9 +3,18 @@
 # Uses sysfs GPIO interface (Pi 4B / not Pi 5)
 set -euo pipefail
 
-GPIO_RESET=17       # SX1302 reset
-GPIO_POWER=27       # Power enable
-GPIO_SX1261=5       # SX1261 LBT/Spectral Scan reset
+# BCM GPIO numbers for SenseCap M1
+BCM_RESET=17
+BCM_POWER=27
+BCM_SX1261=5
+
+# Resolve sysfs global GPIO numbers.
+# Kernel 6.x on Pi 4B uses gpiochip512 as the main BCM2711 controller base.
+# The second chip (base 570) is onboard peripherals — we always want chip 512.
+GPIO_BASE=$(cat /sys/class/gpio/gpiochip512/base 2>/dev/null || echo 512)
+GPIO_RESET=$((GPIO_BASE + BCM_RESET))
+GPIO_POWER=$((GPIO_BASE + BCM_POWER))
+GPIO_SX1261=$((GPIO_BASE + BCM_SX1261))
 
 gpio_export() {
     local pin=$1
@@ -52,10 +61,10 @@ case "${1:-}" in
         gpio_write $GPIO_POWER 1
         sleep 0.1
 
-        # Pulse SX1302 reset: low → high
-        gpio_write $GPIO_RESET 0
-        sleep 0.1
+        # Pulse SX1302 reset: high → low (active-low reset)
         gpio_write $GPIO_RESET 1
+        sleep 0.1
+        gpio_write $GPIO_RESET 0
         sleep 0.1
 
         # Pulse SX1261 reset
