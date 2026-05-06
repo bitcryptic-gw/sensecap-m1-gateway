@@ -15,6 +15,8 @@ log() {
     echo "$(date -Iseconds) $msg" >> "$LOG_FILE"
 }
 
+is_numeric() { [[ "${1:-}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; }
+
 # --- Idempotency guard ---
 if [ -f "$SENTINEL" ]; then
     log "Sentinel found at ${SENTINEL}. First-boot already completed. Exiting."
@@ -51,14 +53,14 @@ if [ "$BAND_VALID" = false ]; then
     exit 1
 fi
 
-# --- Validate GPS coordinates ---
-if [ -n "$GPS_LATITUDE" ] && ! echo "$GPS_LATITUDE" | grep -qE '^-?[0-9]+(\.[0-9]+)?$'; then
-    log "ERROR: GPS_LATITUDE is not a valid number: ${GPS_LATITUDE}"
-    exit 1
+# --- Validate GPS coordinates (non-fatal: warn and default to 0) ---
+if [ -n "${GPS_LATITUDE:-}" ] && ! is_numeric "$GPS_LATITUDE"; then
+    log "WARNING: GPS_LATITUDE '${GPS_LATITUDE}' is not numeric — using 0"
+    GPS_LATITUDE=0
 fi
-if [ -n "$GPS_LONGITUDE" ] && ! echo "$GPS_LONGITUDE" | grep -qE '^-?[0-9]+(\.[0-9]+)?$'; then
-    log "ERROR: GPS_LONGITUDE is not a valid number: ${GPS_LONGITUDE}"
-    exit 1
+if [ -n "${GPS_LONGITUDE:-}" ] && ! is_numeric "$GPS_LONGITUDE"; then
+    log "WARNING: GPS_LONGITUDE '${GPS_LONGITUDE}' is not numeric — using 0"
+    GPS_LONGITUDE=0
 fi
 
 # --- Derive Gateway EUI from eth0 MAC ---
@@ -81,8 +83,8 @@ hostnamectl set-hostname "$NEW_HOSTNAME" || true
 
 # --- Enable SPI and I2C ---
 log "Ensuring SPI and I2C are enabled..."
-raspi-config nonint do_spi 0   || log "WARNING: raspi-config do_spi failed (may already be enabled)"
-raspi-config nonint do_i2c 0   || log "WARNING: raspi-config do_i2c failed (may already be enabled)"
+raspi-config nonint do_spi 0  || log "WARNING: raspi-config do_spi failed (may already be enabled)"
+raspi-config nonint do_i2c 0  || log "WARNING: raspi-config do_i2c failed (may already be enabled)"
 
 # --- Apply frequency band ---
 log "Applying frequency band: ${BAND}"
@@ -96,7 +98,7 @@ jq --arg id "$GATEWAY_EUI" \
 mv /tmp/global_conf_tmp.json "${CONFIG_DIR}/global_conf.json"
 
 # --- Inject GPS coordinates if set ---
-if [ -n "$GPS_LATITUDE" ] && [ -n "$GPS_LONGITUDE" ]; then
+if [ -n "${GPS_LATITUDE:-}" ] && [ -n "${GPS_LONGITUDE:-}" ]; then
     log "Injecting GPS coordinates: lat=${GPS_LATITUDE}, lon=${GPS_LONGITUDE}, alt=${GPS_ALTITUDE:-0}"
     jq \
         --argjson lat "${GPS_LATITUDE}" \
@@ -109,17 +111,47 @@ if [ -n "$GPS_LATITUDE" ] && [ -n "$GPS_LONGITUDE" ]; then
     mv /tmp/global_conf_tmp.json "${CONFIG_DIR}/global_conf.json"
 fi
 
-# --- Tailscale setup ---
-if [ -n "$TAILSCALE_AUTHKEY" ]; then
-    log "Configuring Tailscale (key redacted from log)..."
-    tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$NEW_HOSTNAME" || \
-        log "WARNING: tailscale up failed. Check that tailscaled is running."
+# --- Docker install ---
+if command -v docker &>/dev/null; then
+    log "Docker already installed: $(docker --version)"
+else
+    log "Installing Docker (this may take 30–60 seconds on a Pi)..."
+    if curl -fsSL https://get.docker.com | sh; then
+        log "Docker installed successfully"
+        systemctl enable docker || log "WARNING: Failed to enable docker service"
+        systemctl start  docker || log "WARNING: Failed to start docker service"
 
-    # Remove auth key from config.env — it is one-time use
-    log "Removing TAILSCALE_AUTHKEY from config.env..."
-    sed -i 's/^TAILSCALE_AUTHKEY=.*/TAILSCALE_AUTHKEY=/' "$ENV_FILE" || true
-    log "TAILSCALE_AUTHKEY cleared."
+        # Add gateway user to docker group
+        GATEWAY_USER=$(stat -c '%U' /opt/gateway 2>/dev/null || echo "")
+        if [ -n "$GATEWAY_USER" ] && [ "$GATEWAY_USER" != "root" ]; then
+            usermod -aG docker "$GATEWAY_USER" || \
+                log "WARNING: Failed to add $GATEWAY_USER to docker group"
+            log "Added $GATEWAY_USER to docker group (re-login required to take effect)"
+        fi
+    else
+        log "WARNING: Docker install failed — continuing without Docker"
+        log "Install manually: curl -fsSL https://get.docker.com | sh"
+    fi
 fi
+
+# --- Tailscale setup ---
+if [ -z "${TAILSCALE_AUTHKEY:-}" ]; then
+    log "TAILSCALE_AUTHKEY not set — skipping Tailscale setup"
+    log "To configure Tailscale later: tailscale up --authkey=<key> --hostname=\$(hostname)"
+elif ! command -v tailscale &>/dev/null; then
+    log "WARNING: TAILSCALE_AUTHKEY is set but tailscale is not installed — skipping"
+else
+    log "Configuring Tailscale..."
+    if tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$(hostname)"; then
+        log "Tailscale connected as $(hostname)"
+    else
+        log "WARNING: tailscale up failed — continuing without Tailscale"
+    fi
+fi
+
+# Always scrub the auth key from config.env (one-time use, regardless of outcome above)
+sed -i 's/^TAILSCALE_AUTHKEY=.*/TAILSCALE_AUTHKEY=/' /opt/gateway/config.env || true
+log "TAILSCALE_AUTHKEY scrubbed from config.env"
 
 # --- Prepare pktfwd working directory ---
 log "Creating pktfwd working directory..."
