@@ -121,6 +121,13 @@ if [ -n "$TAILSCALE_AUTHKEY" ]; then
     log "TAILSCALE_AUTHKEY cleared."
 fi
 
+# --- Prepare pktfwd working directory ---
+log "Creating pktfwd working directory..."
+mkdir -p /opt/gateway/pktfwd
+# lora_pkt_fwd and chip_id look for ./reset_lgw.sh relative to their CWD
+ln -sf /opt/gateway/scripts/reset_lgw.sh /opt/gateway/pktfwd/reset_lgw.sh
+log "Symlinked reset_lgw.sh into pktfwd working directory"
+
 # --- Enable and start services ---
 log "Enabling and starting pktfwd.service..."
 systemctl enable pktfwd.service
