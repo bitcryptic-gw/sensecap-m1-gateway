@@ -176,11 +176,12 @@ make all
 # Install
 sudo cp packet_forwarder/lora_pkt_fwd /usr/local/bin/
 sudo mkdir -p /opt/gateway/pktfwd
+sudo ln -sf /opt/gateway/scripts/reset_lgw.sh /opt/gateway/pktfwd/reset_lgw.sh
 ```
 
-> `lora_pkt_fwd` writes `local_conf.json` to its working directory (`/opt/gateway/pktfwd`). This is why `pktfwd.service` sets `WorkingDirectory=/opt/gateway/pktfwd`.
+> `lora_pkt_fwd` (and `chip_id`) hardcode `./reset_lgw.sh` as a relative path and look for it in their working directory (`/opt/gateway/pktfwd`). `first-boot.sh` creates this symlink automatically. If you are setting up manually, the `ln -sf` line above is required — without it, `pktfwd.service` will fail on start with `sh: ./reset_lgw.sh: not found`.
 
-**gateway-rs** runs from the official Docker image (`quay.io/team-helium/miner:gateway-latest`) and does not need to be built manually.
+**helium_gateway** must be installed as a native ARM64 musl binary at `/usr/local/bin/helium_gateway`. Download a release from the [helium-systems/gateway-rs releases page](https://github.com/helium/gateway-rs/releases) — select the `aarch64-unknown-linux-musl` build and extract the binary.
 
 ---
 
@@ -194,7 +195,8 @@ sudo mkdir -p /opt/gateway/pktfwd
 │   ├── global_conf.json    # Active frequency plan (written by apply-band.sh)
 │   ├── global_conf.*.json  # Frequency plan templates for each region
 │   └── local_conf.json     # Written at runtime by lora_pkt_fwd (gitignored)
-├── pktfwd/                 # lora_pkt_fwd working directory
+├── pktfwd/
+│   └── reset_lgw.sh        # Symlink → scripts/reset_lgw.sh (required by lora_pkt_fwd)
 ├── scripts/
 │   ├── reset_lgw.sh        # SX1302 GPIO reset
 │   ├── first-boot.sh       # First-boot initialisation
