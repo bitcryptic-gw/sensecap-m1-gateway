@@ -59,8 +59,8 @@ The goal is a gateway you can fully understand, audit, and trust — running on 
    systemctl daemon-reload
    systemctl enable gateway-platform.service
    ```
-5. **Build and install** `lora_pkt_fwd` (see [Building from Source](#building-from-source))
-6. **Reboot** — `first-boot.sh` runs automatically and brings up the stack
+5. **Build and install** `lora_pkt_fwd` and `helium_gateway` (see [Building from Source](#building-from-source))
+6. **Reboot** — `first-boot.sh` runs automatically: derives Gateway EUI, sets hostname, applies band config, installs Docker if absent, optionally connects Tailscale, and starts `pktfwd` + `gateway-rs`
 
 ---
 
@@ -120,25 +120,31 @@ Helium IoT Network (mainnet)
 ```
 
 - `pktfwd.service` runs the Semtech packet forwarder, which handles SX1302 hardware and forwards raw LoRa packets as UDP datagrams
-- `gateway-rs.service` runs the Helium gateway daemon in a Docker container, connecting to the Helium mainnet using the ECC608A secure element for identity
+- `gateway-rs.service` runs the native `helium_gateway` binary, connecting to the Helium mainnet using the ECC608A secure element for identity
 - `gateway-platform.service` (oneshot) runs `first-boot.sh` at startup to configure everything
+- **Docker** is installed by `first-boot.sh` and used for optional containers (Wingbits, web UI) — it is not part of the core LoRa/Helium data path
 
 ---
 
 ## Tailscale
 
-Tailscale is optional but strongly recommended for remote access. You supply your own auth key — this project never provides one.
+Tailscale is optional. You supply your own auth key — this project never provides one. If `TAILSCALE_AUTHKEY` is not set in `config.env`, first-boot skips Tailscale entirely. If Tailscale is not installed, the key is silently ignored.
 
-**To enable on first boot:**
-Add your one-time auth key to `config.env`:
+**To configure on first boot:**
+Set your one-time auth key in `config.env` before booting:
 ```
 TAILSCALE_AUTHKEY=tskey-auth-xxxxxxxxxxxxxxxx
 ```
-The key is used once during `first-boot.sh` and then **automatically removed** from `config.env` (it is single-use by design).
+`first-boot.sh` calls `tailscale up`, then **scrubs the key from `config.env`** regardless of outcome — keys are single-use and must not persist. A Tailscale failure does not block the LoRa/Helium stack from starting.
 
-**To enable after first boot:**
+**To configure after first boot:**
 ```bash
 tailscale up --authkey=tskey-auth-xxxxxxxxxxxxxxxx --hostname=$(hostname)
+```
+
+**Tailscale is not pre-installed.** Install it before first boot if you want it auto-configured:
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
 ```
 
 **To generate a key:** Visit [tailscale.com/settings/keys](https://tailscale.com/settings/keys) → Generate auth key → Select "One-time use".
