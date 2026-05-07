@@ -167,7 +167,7 @@ async def _restart_after(unit: str, delay: float = 0.8) -> None:
 
 @app.get("/api/identity")
 def api_identity(_: Auth):
-    result: dict = {"address": "", "name": "", "eui": "", "region": ""}
+    result: dict = {"key": "", "name": "", "eui": "", "region": ""}
 
     for conf in (HELIUM_CONF, HELIUM_CONF2):
         if Path(conf).exists():
@@ -175,7 +175,7 @@ def api_identity(_: Auth):
             if rc == 0:
                 try:
                     info = json.loads(out)
-                    result["address"] = info.get("address", "")
+                    result["key"]  = info.get("key", "")
                     result["name"] = info.get("name", "")
                 except json.JSONDecodeError:
                     pass

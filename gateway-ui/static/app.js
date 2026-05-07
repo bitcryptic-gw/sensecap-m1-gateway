@@ -124,7 +124,7 @@ function renderIdentity(d) {
   const el = document.getElementById('identity-body');
   el.innerHTML = kv([
     ['Name',    d.name    || '<span class="dim">unavailable</span>'],
-    ['Address', d.address ? `<code class="addr">${abbrev(d.address)}</code>` : '<span class="dim">unavailable</span>'],
+    ['Key', d.key ? `<code class="addr">${abbrev(d.key)}</code>` : '<span class="dim">unavailable</span>'],
     ['EUI',     d.eui     ? `<code>${d.eui}</code>` : '<span class="dim">—</span>'],
     ['Region',  d.region  ? `<span class="badge badge-info">${d.region}</span>` : '<span class="dim">—</span>'],
   ]);
