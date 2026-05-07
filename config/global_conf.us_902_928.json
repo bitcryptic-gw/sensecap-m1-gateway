@@ -17,8 +17,8 @@
             "rssi_offset": -215.4,
             "rssi_tcomp": {"coeff_a": 0, "coeff_b": 0, "coeff_c": 20.41, "coeff_d": 2162.56, "coeff_e": 0},
             "tx_enable": true,
-            "tx_freq_min": 923300000,
-            "tx_freq_max": 927500000
+            "tx_freq_min": 902000000,
+            "tx_freq_max": 928000000
         },
         "radio_1": {
             "enable": true,
