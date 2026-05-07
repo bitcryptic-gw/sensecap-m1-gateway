@@ -261,11 +261,15 @@ def api_beacon(_: Auth):
 
 @app.get("/api/sysinfo")
 def api_sysinfo(_: Auth):
-    _, cpu, _ = _run(["vcgencmd", "measure_temp"])
+    try:
+        raw = int(Path("/sys/class/thermal/thermal_zone0/temp").read_text().strip())
+        cpu = f"{raw / 1000:.1f} °C"
+    except Exception:
+        cpu = "unavailable"
     _, mem, _ = _run(["free", "-m"])
     _, disk, _ = _run(["df", "-h", "/opt"])
     return {
-        "cpu_temp": cpu.strip()  or "unavailable",
+        "cpu_temp": cpu,
         "memory":   mem.strip()  or "unavailable",
         "disk":     disk.strip() or "unavailable",
     }

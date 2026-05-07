@@ -174,8 +174,9 @@ log "Setting up gateway-ui web interface..."
 
 # Create dedicated system user (no login shell, no home directory)
 if ! id -u gateway-ui &>/dev/null; then
-    useradd --system --no-create-home --shell /usr/sbin/nologin gateway-ui
-    log "Created system user: gateway-ui"
+    useradd --system --no-create-home --shell /usr/sbin/nologin \
+        --groups systemd-journal,i2c gateway-ui
+    log "Created system user: gateway-ui (groups: systemd-journal, i2c)"
 else
     log "User gateway-ui already exists — skipping"
 fi
