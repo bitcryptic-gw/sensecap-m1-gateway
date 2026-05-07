@@ -180,10 +180,6 @@ else
     log "User gateway-ui already exists — skipping"
 fi
 
-# Symlink install location
-ln -sfn /opt/gateway/gateway-ui /opt/gateway-ui
-log "Linked /opt/gateway-ui -> /opt/gateway/gateway-ui"
-
 # Install Python dependencies
 log "Installing Python dependencies for gateway-ui..."
 pip3 install --quiet -r /opt/gateway/gateway-ui/requirements.txt
