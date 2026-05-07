@@ -1,0 +1,23 @@
+[Unit]
+Description=SenseCap M1 Gateway Web UI
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=gateway-ui
+Group=gateway-ui
+WorkingDirectory=/opt/gateway-ui
+ExecStart=/usr/bin/python3 /opt/gateway-ui/main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gateway-ui
+
+# Minimal hardening: no privilege escalation, private /tmp
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

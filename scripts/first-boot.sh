@@ -169,6 +169,68 @@ log "Enabling and starting gateway-rs.service..."
 systemctl enable gateway-rs.service
 systemctl start  gateway-rs.service
 
+# --- gateway-ui web interface ---
+log "Setting up gateway-ui web interface..."
+
+# Create dedicated system user (no login shell, no home directory)
+if ! id -u gateway-ui &>/dev/null; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin gateway-ui
+    log "Created system user: gateway-ui"
+else
+    log "User gateway-ui already exists — skipping"
+fi
+
+# Symlink install location
+ln -sfn /opt/gateway/gateway-ui /opt/gateway-ui
+log "Linked /opt/gateway-ui -> /opt/gateway/gateway-ui"
+
+# Install Python dependencies
+log "Installing Python dependencies for gateway-ui..."
+pip3 install --quiet -r /opt/gateway/gateway-ui/requirements.txt
+log "Python dependencies installed"
+
+# Generate bearer token
+mkdir -p /etc/gateway-ui
+if [ ! -s /etc/gateway-ui/token ]; then
+    openssl rand -hex 32 > /etc/gateway-ui/token
+    chown gateway-ui:gateway-ui /etc/gateway-ui/token
+    chmod 600 /etc/gateway-ui/token
+    chown gateway-ui:gateway-ui /etc/gateway-ui
+    log "Generated gateway-ui bearer token"
+    echo ""
+    echo "============================================"
+    echo "  Gateway Web UI Bearer Token"
+    echo "  $(cat /etc/gateway-ui/token)"
+    echo "  Record this now — it will not be shown again."
+    echo "  Recovery: sudo cat /etc/gateway-ui/token"
+    echo "============================================"
+    echo ""
+else
+    log "gateway-ui token already exists — skipping generation"
+fi
+
+# Install sudoers entries for gateway-ui
+cat > /etc/sudoers.d/10-gateway-ui << 'SUDOERS'
+gateway-ui ALL=(root) NOPASSWD: /bin/systemctl restart gateway-ui
+gateway-ui ALL=(root) NOPASSWD: /bin/systemctl restart pktfwd
+gateway-ui ALL=(root) NOPASSWD: /bin/systemctl restart gateway-rs
+gateway-ui ALL=(root) NOPASSWD: /opt/gateway/scripts/apply-band.sh
+SUDOERS
+chmod 0440 /etc/sudoers.d/10-gateway-ui
+if visudo -c -f /etc/sudoers.d/10-gateway-ui; then
+    log "Sudoers entries installed and validated"
+else
+    log "ERROR: sudoers validation failed — removing /etc/sudoers.d/10-gateway-ui"
+    rm -f /etc/sudoers.d/10-gateway-ui
+fi
+
+# Install and start gateway-ui service
+cp /opt/gateway/systemd/gateway-ui.service /etc/systemd/system/gateway-ui.service
+systemctl daemon-reload
+systemctl enable gateway-ui.service
+systemctl start  gateway-ui.service
+log "gateway-ui.service enabled and started"
+
 # --- Write sentinel ---
 touch "$SENTINEL"
 log "First-boot initialisation complete. Sentinel written to ${SENTINEL}."

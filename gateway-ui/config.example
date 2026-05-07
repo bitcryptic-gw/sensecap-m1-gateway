@@ -1,0 +1,10 @@
+# /opt/gateway-ui/config
+# Copy to /opt/gateway-ui/config and edit. All settings are optional.
+# Restart gateway-ui.service after changes: sudo systemctl restart gateway-ui
+
+# IP address to bind. Default 0.0.0.0 (LAN + Tailscale).
+# Set to Tailscale IP to restrict to Tailscale-only access.
+bind_host=0.0.0.0
+
+# TCP port to listen on. Default 8080.
+port=8080

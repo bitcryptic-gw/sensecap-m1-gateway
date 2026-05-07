@@ -151,6 +151,64 @@ curl -fsSL https://tailscale.com/install.sh | sh
 
 ---
 
+## Web UI
+
+A browser-based management interface is installed and started by `first-boot.sh`.
+
+**Access:** `http://<gateway-ip>:8080` (LAN) or `http://<tailscale-ip>:8080` (remote)
+
+### First login
+
+The bearer token is printed to stdout once during first-boot:
+
+```
+============================================
+  Gateway Web UI Bearer Token
+  a1b2c3d4...
+  Record this now — it will not be shown again.
+  Recovery: sudo cat /etc/gateway-ui/token
+============================================
+```
+
+Paste the token into the login prompt on first visit. The browser stores it in `localStorage`.
+
+**Token recovery:** If you lose the token, retrieve it via SSH:
+```bash
+sudo cat /etc/gateway-ui/token
+```
+
+### Pages
+
+| Page | What it shows |
+|------|--------------|
+| **Dashboard** | Gateway identity (name, address, EUI, region), service status + restart buttons for `pktfwd` and `gateway-rs`, last/next beacon, witness count (24 h), CPU temp, memory, disk |
+| **Live Log** | Last 100 lines of `gateway-rs` journal, auto-refreshed every 10 s; filter to beacons-only or witnesses-only |
+| **Band** | Current active band, dropdown to switch region (calls `apply-band.sh`), restarts `pktfwd` automatically |
+| **Settings** | LAN access toggle, port change, token reveal/regenerate |
+
+### LAN access toggle
+
+| State | Bind address | Accessible from |
+|-------|-------------|-----------------|
+| On (default) | `0.0.0.0` | LAN and Tailscale |
+| Off | Tailscale IP | Tailscale only (falls back to `127.0.0.1` if Tailscale not connected) |
+
+Toggling writes to `/opt/gateway-ui/config` and restarts the service. You will need to reconnect at the new address.
+
+### Manual config
+
+Edit `/opt/gateway-ui/config` and restart:
+```bash
+sudo systemctl restart gateway-ui
+```
+
+```
+bind_host=0.0.0.0
+port=8080
+```
+
+---
+
 ## Wingbits (Optional)
 
 Wingbits is an optional ADS-B data aggregation service. To enable it, uncomment the `wingbits` block in `docker/docker-compose.yml` and configure your Wingbits account credentials.
@@ -194,20 +252,35 @@ sudo ln -sf /opt/gateway/scripts/reset_lgw.sh /opt/gateway/pktfwd/reset_lgw.sh
 ## Directory Layout
 
 ```
-/opt/gateway/
+/opt/gateway/               (repo root, mounted at this path)
 ├── config.env              # Your live config (copy from config.env.example)
 ├── config/
 │   ├── settings.toml       # gateway-rs config (ECC608A / i2c-1)
 │   ├── global_conf.json    # Active frequency plan (written by apply-band.sh)
 │   ├── global_conf.*.json  # Frequency plan templates for each region
 │   └── local_conf.json     # Written at runtime by lora_pkt_fwd (gitignored)
+├── gateway-ui/             # Web UI source (symlinked to /opt/gateway-ui)
+│   ├── main.py             # FastAPI application
+│   ├── requirements.txt
+│   ├── config.example
+│   └── static/             # index.html, app.js, style.css
 ├── pktfwd/
 │   └── reset_lgw.sh        # Symlink → scripts/reset_lgw.sh (required by lora_pkt_fwd)
 ├── scripts/
 │   ├── reset_lgw.sh        # SX1302 GPIO reset
 │   ├── first-boot.sh       # First-boot initialisation
 │   └── apply-band.sh       # Band change helper
+├── systemd/
+│   ├── gateway-platform.service
+│   ├── gateway-rs.service
+│   ├── pktfwd.service
+│   └── gateway-ui.service  # Web UI systemd unit
 └── .configured             # Sentinel: first-boot has run
+
+/opt/gateway-ui             → symlink to /opt/gateway/gateway-ui (created by first-boot)
+/opt/gateway-ui/config      # Runtime config: bind_host, port
+/etc/gateway-ui/token       # Bearer token (owner: gateway-ui, mode 600)
+/etc/sudoers.d/10-gateway-ui  # Restricted sudo grants for gateway-ui user
 ```
 
 ---

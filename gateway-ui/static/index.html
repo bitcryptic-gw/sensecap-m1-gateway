@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SenseCap M1 Gateway</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- Token modal -->
+<div id="modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-logo">SenseCap M1</div>
+    <h2>Gateway Access</h2>
+    <p class="modal-hint">Enter the bearer token printed during first-boot setup.</p>
+    <input type="password" id="modal-token" placeholder="Bearer token"
+           autocomplete="off" spellcheck="false">
+    <button id="modal-submit" class="btn btn-primary btn-full">Connect</button>
+    <p id="modal-error" class="error hidden">Invalid token — try again.</p>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app" class="hidden">
+  <header class="app-header">
+    <div class="header-brand">
+      <span class="brand-name">SenseCap M1</span>
+      <span id="header-name" class="brand-sub"></span>
+    </div>
+    <nav class="tab-nav" role="tablist">
+      <button class="tab-btn active" data-tab="dashboard" role="tab">Dashboard</button>
+      <button class="tab-btn"        data-tab="logs"      role="tab">Live Log</button>
+      <button class="tab-btn"        data-tab="band"      role="tab">Band</button>
+      <button class="tab-btn"        data-tab="settings"  role="tab">Settings</button>
+    </nav>
+  </header>
+
+  <main class="app-main">
+
+    <!-- ── Dashboard ─────────────────────────────────────────────── -->
+    <section id="tab-dashboard" class="tab-panel active" role="tabpanel">
+      <div class="dashboard-grid">
+
+        <div class="card">
+          <div class="card-header">Gateway Identity</div>
+          <div class="card-body" id="identity-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Services</div>
+          <div class="card-body" id="services-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Beacons &amp; Witnesses</div>
+          <div class="card-body" id="beacon-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">System</div>
+          <div class="card-body" id="sysinfo-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── Live Log ───────────────────────────────────────────────── -->
+    <section id="tab-logs" class="tab-panel hidden" role="tabpanel">
+      <div class="log-toolbar">
+        <div class="filter-group" role="group" aria-label="Log filter">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn"        data-filter="beacon">Beacons</button>
+          <button class="filter-btn"        data-filter="witness">Witnesses</button>
+        </div>
+        <div class="log-toolbar-right">
+          <span id="log-status" class="log-status"></span>
+          <button id="btn-refresh-logs" class="btn btn-sm">Refresh</button>
+        </div>
+      </div>
+      <pre id="log-output" class="log-output">Loading…</pre>
+    </section>
+
+    <!-- ── Band Selection ─────────────────────────────────────────── -->
+    <section id="tab-band" class="tab-panel hidden" role="tabpanel">
+      <div class="card card-narrow">
+        <div class="card-header">Frequency Band</div>
+        <div class="card-body">
+          <div class="kv-row">
+            <span class="kv-label">Active band</span>
+            <span id="current-band" class="badge badge-info">—</span>
+          </div>
+          <div class="field-group">
+            <label class="field-label" for="band-select">Select band</label>
+            <select id="band-select" class="select"></select>
+          </div>
+          <div class="action-row">
+            <button id="btn-apply-band" class="btn btn-primary">Apply Band</button>
+            <span id="band-result" class="result-msg"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Settings ───────────────────────────────────────────────── -->
+    <section id="tab-settings" class="tab-panel hidden" role="tabpanel">
+      <div class="settings-grid">
+
+        <div class="card">
+          <div class="card-header">Network</div>
+          <div class="card-body">
+            <div class="toggle-row">
+              <div class="toggle-label">
+                <span>LAN access</span>
+                <span class="hint" id="lan-hint">Binding 0.0.0.0</span>
+              </div>
+              <label class="switch" aria-label="LAN access toggle">
+                <input type="checkbox" id="lan-toggle" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="field-group mt">
+              <label class="field-label" for="port-input">Port</label>
+              <div class="input-row">
+                <input type="number" id="port-input" class="input-sm"
+                       min="1024" max="65535" value="8080">
+                <button id="btn-save-port" class="btn btn-sm btn-primary">Save</button>
+                <span id="port-result" class="result-msg"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Authentication</div>
+          <div class="card-body">
+            <div class="field-group">
+              <label class="field-label">Bearer token</label>
+              <div class="input-row">
+                <code id="token-display" class="token-masked">••••••••••••••••</code>
+                <button id="btn-reveal-token" class="btn btn-sm">Reveal</button>
+              </div>
+            </div>
+            <div class="action-row mt">
+              <button id="btn-regen-token" class="btn btn-danger">Regenerate Token</button>
+            </div>
+            <div id="new-token-box" class="new-token-box hidden">
+              <p class="warn-text">⚠ Save this token now — it will not be shown again after navigating away.</p>
+              <code id="new-token-value" class="token-full"></code>
+              <button id="btn-copy-token" class="btn btn-sm mt-sm">Copy to clipboard</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
