@@ -462,8 +462,6 @@ def api_network_tailscale(_: Auth):
 
     # Check advertised routes from tailscale status (may not be present in JSON)
     advertised = ""
-    for peer in data.get("Peer", []):
-        rts = peer.get("RxBytes", 0)  # not this field
     # Check tailscale up output for --advertise-routes
     rc3, up_out, _ = _run([_TAILSCALE, "up", "--json"])
     if rc3 == 0:
