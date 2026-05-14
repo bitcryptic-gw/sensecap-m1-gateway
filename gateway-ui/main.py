@@ -563,12 +563,17 @@ UNIT_MAP = {
 def api_logs(_: Auth, units: str = ""):
     if units:
         selected = [u.strip() for u in units.split(",") if u.strip()]
+        has_system = "system" in selected
         unit_args = []
         for s in selected:
+            if s == "system":
+                continue
             if s in UNIT_MAP:
                 unit_args.extend(UNIT_MAP[s])
             elif s in ALLOWED_TAILSCALE_UNITS:
                 unit_args.append(f"{s}.service")
+        if has_system:
+            unit_args = []
         if not unit_args:
             unit_args = ["gateway-rs.service"]
     else:

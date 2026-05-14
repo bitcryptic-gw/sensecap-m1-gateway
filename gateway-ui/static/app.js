@@ -164,8 +164,6 @@ function renderAppIdentity(d) {
     ['EUI',     d.eui     ? `<code>${d.eui}</code>` : '<span class="dim">—</span>'],
     ['Region',  d.region  ? `<span class="badge badge-info">${d.region}</span>` : '<span class="dim">—</span>'],
   ]);
-  const sub = document.getElementById('header-name');
-  if (d.name) sub.textContent = d.name;
 }
 
 function renderHeliumServices(d) {
@@ -682,6 +680,17 @@ async function copyToken() {
   }
 }
 
+// ── Hostname (fetched once on init) ─────────────────────────────────────────
+
+async function setHostname() {
+  try {
+    const d = await api('/api/sysinfo');
+    if (d.hostname) {
+      document.getElementById('header-name').textContent = d.hostname;
+    }
+  } catch {}
+}
+
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 function kv(pairs) {
@@ -767,6 +776,8 @@ function wireEvents() {
   document.getElementById('btn-refresh-logs').addEventListener('click', loadLogs);
   document.querySelectorAll('.log-pill').forEach(pill => {
     pill.addEventListener('click', () => {
+      const activePills = document.querySelectorAll('.log-pill.active');
+      if (activePills.length === 1 && activePills[0] === pill) return;
       pill.classList.toggle('active');
       loadLogs();
     });
@@ -797,12 +808,14 @@ async function init() {
   try {
     await api('/api/identity');
     hideModal();
+    await setHostname();
     initApp();
   } catch (e) {
     if (e.message === 'unauthorized') {
       showModal(false);
     } else {
       hideModal();
+      await setHostname();
       initApp();
     }
   }
