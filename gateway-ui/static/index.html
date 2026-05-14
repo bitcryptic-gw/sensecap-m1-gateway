@@ -132,21 +132,26 @@
           <div class="card-header">Setup / Reconfiguration</div>
           <div class="card-body">
             <p class="wingbits-intro">
-              Use this process for first-time setup or when relocating this device
-              or changing the station ID.
+              Use this flow for first-time setup or when relocating this device
+              or changing the station ID. Log into <strong>wingbits.com</strong>
+              &rarr; <strong>My Stations</strong> &rarr; <strong>BYOD Install</strong>
+              to get your install URL.
             </p>
-            <ol class="wingbits-steps">
-              <li>Log into <strong>wingbits.com</strong>, go to <strong>My Stations</strong>, and click
-                <strong>"BYOD Install"</strong> for your station.
-                <br><span class="hint">For relocation: update the station location on the dashboard first.</span></li>
-              <li>Copy the install command <strong>URL</strong> from the dashboard.</li>
-              <li>SSH into this device and run:
-                <pre class="wingbits-cmd">sudo /opt/gateway/scripts/wingbits-setup.sh "&lt;your-install-url&gt;"</pre>
-              </li>
-              <li>After the script completes, link or re-link your <strong>GeoSigner</strong>
-                in the Wingbits dashboard.</li>
-              <li>Return here to verify both services show <strong>Running</strong>.</li>
-            </ol>
+            <div class="field-group">
+              <label class="field-label" for="wingbits-url">Install URL</label>
+              <input type="text" id="wingbits-url" class="wingbits-input"
+                     placeholder="https://gitlab.com/wingbits/config/-/raw/..."
+                     autocomplete="off" spellcheck="false">
+              <span id="wingbits-url-msg" class="wingbits-input-msg hidden"></span>
+            </div>
+            <div class="action-row">
+              <button id="btn-wingbits-run" class="btn btn-primary" disabled>Run Setup</button>
+            </div>
+            <pre id="wingbits-output" class="wingbits-output hidden"></pre>
+            <div id="wingbits-banner" class="wingbits-banner hidden"></div>
+            <div id="wingbits-output-actions" class="action-row hidden">
+              <button id="btn-wingbits-clear" class="btn btn-sm">Clear</button>
+            </div>
             <p class="wingbits-note">
               Beast mode is automatically configured by the setup script.
               No manual steps required.

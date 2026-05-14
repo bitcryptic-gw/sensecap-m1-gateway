@@ -401,6 +401,66 @@ html, body {
 
 .hint { font-size: .78rem; color: var(--text-dim); }
 
+/* ── Wingbits setup ────────────────────────────────────────────────────────── */
+.wingbits-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .82rem;
+  padding: .5rem .65rem;
+  outline: none;
+  transition: border-color .15s;
+}
+.wingbits-input:focus { border-color: var(--blue); }
+.wingbits-input.invalid { border-color: var(--red); }
+
+.wingbits-input-msg {
+  font-size: .78rem;
+  color: var(--red);
+  margin-top: .25rem;
+}
+.wingbits-input-msg.hidden { display: none; }
+
+.wingbits-output {
+  display: block;
+  margin-top: .75rem;
+  background: #0a0c14;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: #b0b8d0;
+  font-family: var(--mono);
+  font-size: .78rem;
+  line-height: 1.5;
+  padding: .75rem;
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.wingbits-output.hidden { display: none; }
+
+.wingbits-banner {
+  margin-top: .75rem;
+  padding: .6rem .8rem;
+  border-radius: var(--radius);
+  font-size: .85rem;
+  font-weight: 600;
+}
+.wingbits-banner.hidden { display: none; }
+.wingbits-banner-success {
+  background: rgba(62,207,110,.1);
+  border: 1px solid rgba(62,207,110,.3);
+  color: var(--green);
+}
+.wingbits-banner-fail {
+  background: rgba(240,75,93,.1);
+  border: 1px solid rgba(240,75,93,.3);
+  color: var(--red);
+}
+
 /* ── Wingbits tab ──────────────────────────────────────────────────────────── */
 .wingbits-intro {
   font-size: .85rem;

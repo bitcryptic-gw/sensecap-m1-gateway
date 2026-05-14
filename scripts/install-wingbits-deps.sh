@@ -32,6 +32,25 @@ else
     echo "[WARN] systemd override not found at ${OVERRIDE_SRC} — skipping"
 fi
 
+# --- setuid wrapper ---
+WRAPPER_SRC="${SCRIPT_DIR}/wingbits-setup-wrapper.c"
+WRAPPER_DST="/usr/local/bin/wingbits-setup-wrapper"
+
+if [ -f "$WRAPPER_SRC" ]; then
+    if ! command -v gcc &>/dev/null; then
+        echo "[INFO] Installing gcc..."
+        apt-get install -y -qq gcc
+        echo "[OK] gcc installed"
+    fi
+    echo "[INFO] Compiling wingbits-setup-wrapper..."
+    gcc -O2 -Wall -o "$WRAPPER_DST" "$WRAPPER_SRC"
+    chown root:root "$WRAPPER_DST"
+    chmod 4755 "$WRAPPER_DST"
+    echo "[OK] Compiled and installed setuid wrapper at ${WRAPPER_DST}"
+else
+    echo "[WARN] wrapper source not found at ${WRAPPER_SRC} — skipping"
+fi
+
 systemctl daemon-reload
 echo "[OK] systemd daemon-reload complete"
 

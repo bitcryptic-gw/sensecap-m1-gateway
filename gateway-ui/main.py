@@ -11,7 +11,7 @@ from typing import Annotated
 
 import uvicorn
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -31,6 +31,10 @@ _SYSTEMCTL    = "/bin/systemctl"
 _APPLY_BAND   = "/opt/gateway/scripts/apply-band.sh"
 
 BAND_RE = re.compile(r"^[a-z][a-z0-9_]{1,30}$")
+WRAPPER_BIN = "/usr/local/bin/wingbits-setup-wrapper"
+WINGBITS_URL_RE = re.compile(r"^https://gitlab\.com/wingbits/config/-/raw/")
+SHELL_META_RE = re.compile(r"[;&|`$()<>\n\r]")
+_wingbits_running = False
 
 # ── Config + Token (loaded at startup) ───────────────────────────────────────
 
@@ -214,6 +218,63 @@ def api_wingbits(_: Auth):
         "readsb":   _service_info("readsb.service")   if readsb_installed   else {"unit": "readsb.service",   "state": "not-installed", "since": ""},
         "wingbits": _service_info("wingbits.service") if wingbits_installed else {"unit": "wingbits.service", "state": "not-installed", "since": ""},
     }
+
+
+def _validate_wingbits_url(url: str) -> str | None:
+    if not url:
+        return "URL is required"
+    if not WINGBITS_URL_RE.match(url):
+        return "URL must start with https://gitlab.com/wingbits/config/-/raw/"
+    if SHELL_META_RE.search(url):
+        return "URL contains invalid characters"
+    return None
+
+
+@app.post("/api/wingbits/setup")
+async def api_wingbits_setup(_: Auth, request: Request):
+    global _wingbits_running
+
+    if not Path(WRAPPER_BIN).exists():
+        raise HTTPException(status_code=503, detail="Setup wrapper not installed — run install-wingbits-deps.sh")
+
+    if _wingbits_running:
+        raise HTTPException(status_code=409, detail="Setup already in progress")
+
+    body = await request.json()
+    url = str(body.get("url", ""))
+    err = _validate_wingbits_url(url)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+    _wingbits_running = True
+
+    async def event_stream():
+        global _wingbits_running
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                WRAPPER_BIN, url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                yield f"data: {line.decode('utf-8', errors='replace').rstrip()}\n\n"
+            exit_code = await proc.wait()
+            yield f"data: {json.dumps({'exit_code': exit_code})}\n\n"
+        finally:
+            _wingbits_running = False
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/restart/{service}")

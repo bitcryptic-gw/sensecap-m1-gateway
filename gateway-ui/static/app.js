@@ -8,6 +8,7 @@ const state = {
   logInterval: null,
   dashInterval: null,
   tokenRevealed: false,
+  wingbitsAbort: null,
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -93,6 +94,12 @@ function switchTab(name) {
   state.logInterval = null;
   state.dashInterval = null;
 
+  if (name !== 'wingbits') {
+    if (state.wingbitsAbort) {
+      state.wingbitsAbort.abort();
+      state.wingbitsAbort = null;
+    }
+  }
   if (name === 'dashboard') startDashboardAutoRefresh();
   if (name === 'logs')      startLogAutoRefresh();
   if (name === 'band')      loadBands();
@@ -209,6 +216,141 @@ function wingbitsServiceRow(s) {
         ${since}
       </div>
     </div>`;
+}
+
+// ── Wingbits Setup ────────────────────────────────────────────────────────
+
+function _wingbitsValidateUrl(url) {
+  return /^https:\/\/gitlab\.com\/wingbits\/config\/-\/raw\//.test(url);
+}
+
+function _wingbitsUpdateBtn() {
+  const url = document.getElementById('wingbits-url').value.trim();
+  const btn = document.getElementById('btn-wingbits-run');
+  const msg = document.getElementById('wingbits-url-msg');
+  if (!url) {
+    btn.disabled = true;
+    msg.classList.add('hidden');
+    document.getElementById('wingbits-url').classList.remove('invalid');
+    return;
+  }
+  if (_wingbitsValidateUrl(url)) {
+    btn.disabled = false;
+    msg.classList.add('hidden');
+    document.getElementById('wingbits-url').classList.remove('invalid');
+  } else {
+    btn.disabled = true;
+    msg.textContent = 'URL must start with https://gitlab.com/wingbits/config/-/raw/';
+    msg.className = 'wingbits-input-msg';
+    document.getElementById('wingbits-url').classList.add('invalid');
+  }
+}
+
+async function runWingbitsSetup() {
+  const url = document.getElementById('wingbits-url').value.trim();
+  if (!_wingbitsValidateUrl(url)) return;
+
+  const btn = document.getElementById('btn-wingbits-run');
+  const output = document.getElementById('wingbits-output');
+  const banner = document.getElementById('wingbits-banner');
+  const outputActions = document.getElementById('wingbits-output-actions');
+
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  output.classList.remove('hidden');
+  output.textContent = '';
+  banner.classList.add('hidden');
+  outputActions.classList.add('hidden');
+
+  state.wingbitsAbort = new AbortController();
+
+  try {
+    const r = await fetch('/api/wingbits/setup', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${state.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url }),
+      signal: state.wingbitsAbort.signal,
+    });
+
+    if (r.status === 409) {
+      output.textContent = 'Setup already in progress.';
+      return;
+    }
+    if (r.status === 503) {
+      const err = await r.json();
+      output.textContent = `Error: ${err.detail}`;
+      return;
+    }
+    if (!r.ok) {
+      let detail = 'Request failed';
+      try { detail = (await r.json()).detail || detail; } catch {}
+      output.textContent = `Error: ${detail}`;
+      return;
+    }
+
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let exitCode = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+
+      for (const part of parts) {
+        for (const line of part.split('\n')) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            try {
+              const obj = JSON.parse(data);
+              if (obj.exit_code !== undefined) {
+                exitCode = obj.exit_code;
+                break;
+              }
+            } catch {}
+            output.textContent += data + '\n';
+            output.scrollTop = output.scrollHeight;
+          }
+        }
+        if (exitCode !== null) break;
+      }
+    }
+
+    if (exitCode === 0) {
+      banner.textContent = '✓ Setup completed successfully';
+      banner.className = 'wingbits-banner wingbits-banner-success';
+    } else if (exitCode !== null) {
+      banner.textContent = '✗ Setup failed (exit code ' + exitCode + ')';
+      banner.className = 'wingbits-banner wingbits-banner-fail';
+    }
+    if (exitCode !== null) {
+      banner.classList.remove('hidden');
+      outputActions.classList.remove('hidden');
+      loadWingbits();
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      output.textContent += '\nError: ' + e.message;
+    }
+  } finally {
+    state.wingbitsAbort = null;
+    btn.disabled = false;
+    btn.textContent = 'Run Setup';
+  }
+}
+
+function clearWingbitsOutput() {
+  document.getElementById('wingbits-output').classList.add('hidden');
+  document.getElementById('wingbits-output').textContent = '';
+  document.getElementById('wingbits-banner').classList.add('hidden');
+  document.getElementById('wingbits-output-actions').classList.add('hidden');
 }
 
 function renderBeacon(d) {
@@ -482,6 +624,11 @@ function wireEvents() {
 
   // Band
   document.getElementById('btn-apply-band').addEventListener('click', applyBand);
+
+  // Wingbits setup
+  document.getElementById('wingbits-url').addEventListener('input', _wingbitsUpdateBtn);
+  document.getElementById('btn-wingbits-run').addEventListener('click', runWingbitsSetup);
+  document.getElementById('btn-wingbits-clear').addEventListener('click', clearWingbitsOutput);
 
   // Settings — network
   document.getElementById('lan-toggle').addEventListener('change', e => {
