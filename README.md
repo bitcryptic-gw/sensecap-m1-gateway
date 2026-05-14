@@ -41,9 +41,26 @@ The goal is a gateway you can fully understand, audit, and trust — running on 
 
 ---
 
+## Flashing a Pre-Built Image
+
+Pre-built images are available on the [Releases](https://github.com/bitcryptic-gw/sensecap-m1-gateway/releases) page.
+
+**Requirements:**
+- Raspberry Pi Imager (available for Windows, Mac, Linux)
+- A microSD card (8 GB minimum)
+
+**Steps:**
+1. Download the latest `.img.xz` from Releases and verify the SHA256 checksum.
+2. Open Raspberry Pi Imager, select the downloaded image, and use the settings gear to configure your username, password, SSH key, hostname, and Wi-Fi before flashing.
+3. Flash to your microSD card and insert into the SenseCap M1.
+4. Power on — first boot will clone this repo and run `boot/bootstrap.sh` automatically. This takes a few minutes and ends with a reboot.
+5. SSH in after the reboot and follow the post-provisioning checklist printed by `bootstrap.sh`.
+
+---
+
 ## Quick Start
 
-> **Fresh install?** For full first-time provisioning, run `sudo bash boot/bootstrap.sh` after cloning the repo. See the script header for prerequisites. A flashable image with automated first-boot provisioning is on the roadmap.
+> **Fresh install?** For full first-time provisioning, run `sudo bash boot/bootstrap.sh` after cloning the repo. See the script header for prerequisites.
 
 1. **Flash** a fresh Raspberry Pi OS Lite (64-bit) to the SenseCap M1 SD card
 2. **Copy** `config.env.example` to `config.env` on the boot partition and edit it:

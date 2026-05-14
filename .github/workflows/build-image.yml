@@ -1,0 +1,82 @@
+name: Build Image
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (YYYY.MM.DD)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            qemu-user-static \
+            binfmt-support \
+            xz-utils \
+            kpartx \
+            wget \
+            curl
+
+      - name: Run image builder
+        run: |
+          sudo bash boot/build-image.sh
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "tag=v${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute output filename
+        id: artifacts
+        run: |
+          IMG=$(ls -1 sensecap-m1-gateway-*.img.xz 2>/dev/null | head -1)
+          if [ -z "$IMG" ]; then
+            echo "ERROR: No output image found" >&2
+            exit 1
+          fi
+          echo "file=${IMG}" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$IMG" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: SenseCap M1 Gateway v${{ steps.version.outputs.tag }}
+          body: |
+            ## SenseCap M1 Gateway Image
+
+            ### SHA256 Checksum
+            ```
+            ${{ steps.artifacts.outputs.sha256 }}  ${{ steps.artifacts.outputs.file }}
+            ```
+
+            ### What happens on first boot
+            On first boot, [boot/firstrun.sh](https://github.com/bitcryptic-gw/sensecap-m1-gateway/blob/main/boot/firstrun.sh) clones this repo and runs [boot/bootstrap.sh](https://github.com/bitcryptic-gw/sensecap-m1-gateway/blob/main/boot/bootstrap.sh) to provision the device automatically.
+
+            ### Requirements
+            - **Raspberry Pi Imager** is required to set your username, password, SSH key, and hostname before flashing.
+            - This image does not ship with a default user account.
+
+            ### Setup instructions
+            See the [README](https://github.com/bitcryptic-gw/sensecap-m1-gateway#readme) for full setup instructions after flashing.
+          files: |
+            ${{ steps.artifacts.outputs.file }}
