@@ -82,7 +82,6 @@ if [ -n "$SHA256_FILE" ]; then
     echo "[build] Verifying SHA256..."
     wget -q -O "${WORKDIR}/base.img.xz.sha256" "$SHA256_URL"
     sed -i 's/[^ ]*\.img\.xz/base.img.xz/' "${WORKDIR}/base.img.xz.sha256"
-    echo "[debug] sha256 file contents: $(cat "${WORKDIR}/base.img.xz.sha256")"
     (cd "$WORKDIR" && sha256sum -c "base.img.xz.sha256" --ignore-missing) || {
         echo "ERROR: SHA256 mismatch on downloaded image" >&2
         exit 1
