@@ -201,6 +201,21 @@ def api_status(_: Auth):
     }
 
 
+def _service_installed(unit: str) -> bool:
+    rc, _, _ = _run(["systemctl", "cat", unit])
+    return rc == 0
+
+
+@app.get("/api/wingbits")
+def api_wingbits(_: Auth):
+    readsb_installed   = _service_installed("readsb.service")
+    wingbits_installed = _service_installed("wingbits.service")
+    return {
+        "readsb":   _service_info("readsb.service")   if readsb_installed   else {"unit": "readsb.service",   "state": "not-installed", "since": ""},
+        "wingbits": _service_info("wingbits.service") if wingbits_installed else {"unit": "wingbits.service", "state": "not-installed", "since": ""},
+    }
+
+
 @app.post("/api/restart/{service}")
 def api_restart(_: Auth, service: str):
     allowed = {"pktfwd": "pktfwd.service", "gateway-rs": "gateway-rs.service"}

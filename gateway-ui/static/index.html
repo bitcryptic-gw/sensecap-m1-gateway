@@ -32,6 +32,7 @@
       <button class="tab-btn active" data-tab="dashboard" role="tab">Dashboard</button>
       <button class="tab-btn"        data-tab="logs"      role="tab">Live Log</button>
       <button class="tab-btn"        data-tab="band"      role="tab">Band</button>
+      <button class="tab-btn"        data-tab="wingbits"  role="tab">Wingbits</button>
       <button class="tab-btn"        data-tab="settings"  role="tab">Settings</button>
     </nav>
   </header>
@@ -107,6 +108,52 @@
             <span id="band-result" class="result-msg"></span>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ── Wingbits ─────────────────────────────────────────────── -->
+    <section id="tab-wingbits" class="tab-panel hidden" role="tabpanel">
+      <div class="dashboard-grid">
+
+        <div class="card">
+          <div class="card-header">Wingbits Status</div>
+          <div class="card-body">
+            <div class="kv-row">
+              <span class="kv-label">Overall</span>
+              <span id="wingbits-overall" class="badge badge-dim">Not configured</span>
+            </div>
+          </div>
+          <div class="card-body" id="wingbits-services-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Setup / Reconfiguration</div>
+          <div class="card-body">
+            <p class="wingbits-intro">
+              Use this process for first-time setup or when relocating this device
+              or changing the station ID.
+            </p>
+            <ol class="wingbits-steps">
+              <li>Log into <strong>wingbits.com</strong>, go to <strong>My Stations</strong>, and click
+                <strong>"BYOD Install"</strong> for your station.
+                <br><span class="hint">For relocation: update the station location on the dashboard first.</span></li>
+              <li>Copy the install command <strong>URL</strong> from the dashboard.</li>
+              <li>SSH into this device and run:
+                <pre class="wingbits-cmd">sudo /opt/gateway/scripts/wingbits-setup.sh "&lt;your-install-url&gt;"</pre>
+              </li>
+              <li>After the script completes, link or re-link your <strong>GeoSigner</strong>
+                in the Wingbits dashboard.</li>
+              <li>Return here to verify both services show <strong>Running</strong>.</li>
+            </ol>
+            <p class="wingbits-note">
+              Beast mode is automatically configured by the setup script.
+              No manual steps required.
+            </p>
+          </div>
+        </div>
+
       </div>
     </section>
 

@@ -1,0 +1,9 @@
+# 99-rtlsdr.rules
+# Stable symlink /dev/rtlsdr0 for RTL-SDR USB devices.
+# Matches common RTL-SDR vendor:product IDs:
+#   0bda:2832  — Realtek RTL2832U (generic RTL-SDR)
+#   0bda:2838  — Realtek RTL2838 (RTL-SDR Blog v3)
+#   0bda:2840  — Realtek RTL2840 (RTL-SDR Blog v4, FlightAware Pro Stick)
+SUBSYSTEM=="tty", KERNEL=="ttyUSB[0-9]*", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2832", SYMLINK+="rtlsdr0"
+SUBSYSTEM=="tty", KERNEL=="ttyUSB[0-9]*", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2838", SYMLINK+="rtlsdr0"
+SUBSYSTEM=="tty", KERNEL=="ttyUSB[0-9]*", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2840", SYMLINK+="rtlsdr0"

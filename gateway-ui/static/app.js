@@ -96,6 +96,7 @@ function switchTab(name) {
   if (name === 'dashboard') startDashboardAutoRefresh();
   if (name === 'logs')      startLogAutoRefresh();
   if (name === 'band')      loadBands();
+  if (name === 'wingbits')  loadWingbits();
   if (name === 'settings')  loadSettings();
 }
 
@@ -150,6 +151,63 @@ function serviceRow(s) {
         ${since}
       </div>
       <button class="btn btn-sm btn-restart" data-service="${short}">Restart</button>
+    </div>`;
+}
+
+// ── Wingbits ──────────────────────────────────────────────────────────────
+
+async function loadWingbits() {
+  try {
+    const d = await api('/api/wingbits');
+    renderWingbits(d);
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      document.getElementById('wingbits-services-body').innerHTML =
+        `<span class="dim">Error: ${e.message}</span>`;
+    }
+  }
+}
+
+function renderWingbits(d) {
+  const el = document.getElementById('wingbits-services-body');
+  el.innerHTML = [d.readsb, d.wingbits].map(s => wingbitsServiceRow(s)).join('');
+
+  const allActive = d.readsb.state === 'active' && d.wingbits.state === 'active';
+  const noneInstalled = d.readsb.state === 'not-installed' && d.wingbits.state === 'not-installed';
+  const overall = document.getElementById('wingbits-overall');
+  if (allActive) {
+    overall.textContent = '● Active';
+    overall.className = 'badge badge-green';
+  } else if (noneInstalled) {
+    overall.textContent = '● Not configured';
+    overall.className = 'badge badge-dim';
+  } else {
+    overall.textContent = '● Degraded';
+    overall.className = 'badge badge-yellow';
+  }
+}
+
+function wingbitsServiceRow(s) {
+  let cls, label;
+  if (s.state === 'active') {
+    cls = 'green';
+    label = '● Running';
+  } else if (s.state === 'not-installed') {
+    cls = 'dim';
+    label = '● Not installed';
+  } else {
+    cls = 'yellow';
+    label = '● Stopped';
+  }
+  const short = s.unit.replace('.service', '');
+  const since = s.since ? `<div class="since">since ${fmtTimestamp(s.since)}</div>` : '';
+  return `
+    <div class="service-row">
+      <div class="service-info">
+        <span class="service-name">${short}</span>
+        <span class="badge badge-${cls}">${label}</span>
+        ${since}
+      </div>
     </div>`;
 }
 

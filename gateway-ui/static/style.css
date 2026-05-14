@@ -401,6 +401,50 @@ html, body {
 
 .hint { font-size: .78rem; color: var(--text-dim); }
 
+/* ── Wingbits tab ──────────────────────────────────────────────────────────── */
+.wingbits-intro {
+  font-size: .85rem;
+  color: var(--text);
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+.wingbits-steps {
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  font-size: .85rem;
+  line-height: 1.6;
+}
+
+.wingbits-steps li { color: var(--text); }
+
+.wingbits-cmd {
+  display: block;
+  margin-top: .4rem;
+  padding: .5rem .7rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--cyan);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.wingbits-note {
+  margin-top: 1rem;
+  padding: .6rem .8rem;
+  background: rgba(77,158,245,.07);
+  border: 1px solid rgba(77,158,245,.25);
+  border-radius: var(--radius);
+  font-size: .82rem;
+  color: var(--blue);
+  line-height: 1.5;
+}
+
 /* ── Misc ────────────────────────────────────────────────────────────────────── */
 .dim     { color: var(--text-dim); }
 .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; margin: .5rem auto; }
