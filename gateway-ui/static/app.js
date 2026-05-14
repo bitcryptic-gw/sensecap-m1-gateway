@@ -3,12 +3,13 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  token:       null,
-  logLines:    [],
-  logInterval: null,
-  dashInterval: null,
-  tokenRevealed: false,
-  wingbitsAbort: null,
+  token:          null,
+  logLines:       [],
+  logInterval:    null,
+  dashInterval:   null,
+  netInterval:    null,
+  tokenRevealed:  false,
+  wingbitsAbort:  null,
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -35,7 +36,7 @@ async function api(path, method = 'GET', body = null) {
   }
   if (!r.ok) {
     let detail = 'Request failed';
-    try { detail = (await r.json()).detail || detail; } catch { /* ignore */ }
+    try { detail = (await r.json()).detail || detail; } catch {}
     throw new Error(detail);
   }
   return r.json();
@@ -91,44 +92,71 @@ function switchTab(name) {
 
   clearInterval(state.logInterval);
   clearInterval(state.dashInterval);
+  clearInterval(state.netInterval);
   state.logInterval = null;
   state.dashInterval = null;
+  state.netInterval = null;
 
-  if (name !== 'wingbits') {
-    if (state.wingbitsAbort) {
-      state.wingbitsAbort.abort();
-      state.wingbitsAbort = null;
-    }
+  if (state.wingbitsAbort) {
+    state.wingbitsAbort.abort();
+    state.wingbitsAbort = null;
   }
-  if (name === 'dashboard') startDashboardAutoRefresh();
-  if (name === 'logs')      startLogAutoRefresh();
-  if (name === 'band')      loadBands();
-  if (name === 'wingbits')  loadWingbits();
-  if (name === 'settings')  loadSettings();
+
+  if (name === 'dashboard')     startDashboardRefresh();
+  if (name === 'applications')  loadApplications();
+  if (name === 'network')       startNetworkRefresh();
+  if (name === 'logs')          startLogAutoRefresh();
+  if (name === 'settings')      loadSettings();
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
-function startDashboardAutoRefresh() {
+function startDashboardRefresh() {
   loadDashboard();
   state.dashInterval = setInterval(loadDashboard, 30_000);
 }
 
 async function loadDashboard() {
-  const [identity, status, beacon, sysinfo] = await Promise.allSettled([
+  const [status, sysinfo] = await Promise.allSettled([
+    api('/api/status'),
+    api('/api/sysinfo'),
+  ]);
+  if (status.status  === 'fulfilled') renderDashServices(status.value);
+  if (sysinfo.status === 'fulfilled') renderSysinfo(sysinfo.value, true);
+}
+
+function renderDashServices(d) {
+  const services = ['pktfwd', 'gateway-rs', 'readsb', 'wingbits', 'tailscaled'];
+  const el = document.getElementById('dash-services-body');
+  el.innerHTML = services.map(name => {
+    const s = d[name] || { state: 'not-installed' };
+    let cls, dot;
+    if (s.state === 'active') { cls = 'badge-green'; dot = '●'; }
+    else if (s.state === 'not-installed') { cls = 'badge-dim'; dot = '○'; }
+    else { cls = 'badge-yellow'; dot = '●'; }
+    return `<span class="service-dot ${cls}">${dot} ${name}</span>`;
+  }).join('');
+}
+
+// ── Applications: Helium + Wingbits ──────────────────────────────────────────
+
+async function loadApplications() {
+  const [identity, status, beacon, bands, wingbits] = await Promise.allSettled([
     api('/api/identity'),
     api('/api/status'),
     api('/api/beacon'),
-    api('/api/sysinfo'),
+    api('/api/bands'),
+    api('/api/wingbits'),
   ]);
 
-  if (identity.status === 'fulfilled') renderIdentity(identity.value);
-  if (status.status   === 'fulfilled') renderServices(status.value);
+  if (identity.status === 'fulfilled') renderAppIdentity(identity.value);
+  if (status.status   === 'fulfilled') renderHeliumServices(status.value);
   if (beacon.status   === 'fulfilled') renderBeacon(beacon.value);
-  if (sysinfo.status  === 'fulfilled') renderSysinfo(sysinfo.value);
+  if (bands.status    === 'fulfilled') renderBands(bands.value);
+  if (wingbits.status === 'fulfilled') renderWingbits(wingbits.value);
 }
 
-function renderIdentity(d) {
+function renderAppIdentity(d) {
   const el = document.getElementById('identity-body');
   el.innerHTML = kv([
     ['Name',    d.name    || '<span class="dim">unavailable</span>'],
@@ -140,9 +168,12 @@ function renderIdentity(d) {
   if (d.name) sub.textContent = d.name;
 }
 
-function renderServices(d) {
-  const el = document.getElementById('services-body');
-  el.innerHTML = [d.pktfwd, d.gateway_rs].map(s => serviceRow(s)).join('');
+function renderHeliumServices(d) {
+  const el = document.getElementById('helium-services-body');
+  el.innerHTML = [
+    d.pktfwd || { unit: 'pktfwd.service', state: 'not-installed', since: '' },
+    d['gateway-rs'] || { unit: 'gateway-rs.service', state: 'not-installed', since: '' },
+  ].map(s => serviceRow(s)).join('');
 }
 
 function serviceRow(s) {
@@ -161,7 +192,47 @@ function serviceRow(s) {
     </div>`;
 }
 
-// ── Wingbits ──────────────────────────────────────────────────────────────
+function renderBeacon(d) {
+  const el = document.getElementById('beacon-body');
+  const lb = d.last_beacon
+    ? fmtTimestamp(d.last_beacon.timestamp)
+    : '<span class="dim">none recorded</span>';
+  const nb = d.next_beacon
+    ? fmtTimestamp(d.next_beacon)
+    : '<span class="dim">unknown</span>';
+  el.innerHTML = kv([
+    ['Last beacon',      lb],
+    ['Next beacon',      nb],
+    ['Witnesses (24 h)', `<strong>${d.witness_count_24h}</strong>`],
+  ]);
+}
+
+function renderBands(d) {
+  const sel = document.getElementById('band-select');
+  sel.innerHTML = d.regions.map(r =>
+    `<option value="${r}"${r === d.current ? ' selected' : ''}>${r}</option>`
+  ).join('');
+  document.getElementById('current-band').textContent = d.current || '—';
+}
+
+async function applyBand() {
+  const region = document.getElementById('band-select').value;
+  const btn    = document.getElementById('btn-apply-band');
+  btn.disabled = true;
+  btn.textContent = 'Applying…';
+  try {
+    await api('/api/band', 'POST', { region });
+    showResult('band-result', `Band set to ${region}`, false);
+    document.getElementById('current-band').textContent = region;
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('band-result', e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Apply Band';
+  }
+}
+
+// ── Applications: Wingbits ───────────────────────────────────────────────────
 
 async function loadWingbits() {
   try {
@@ -197,14 +268,11 @@ function renderWingbits(d) {
 function wingbitsServiceRow(s) {
   let cls, label;
   if (s.state === 'active') {
-    cls = 'green';
-    label = '● Running';
+    cls = 'green'; label = '● Running';
   } else if (s.state === 'not-installed') {
-    cls = 'dim';
-    label = '● Not installed';
+    cls = 'dim'; label = '● Not installed';
   } else {
-    cls = 'yellow';
-    label = '● Stopped';
+    cls = 'yellow'; label = '● Stopped';
   }
   const short = s.unit.replace('.service', '');
   const since = s.since ? `<div class="since">since ${fmtTimestamp(s.since)}</div>` : '';
@@ -217,8 +285,6 @@ function wingbitsServiceRow(s) {
       </div>
     </div>`;
 }
-
-// ── Wingbits Setup ────────────────────────────────────────────────────────
 
 function _wingbitsValidateUrl(url) {
   return /^https:\/\/gitlab\.com\/wingbits\/config\/-\/raw\//.test(url);
@@ -267,28 +333,17 @@ async function runWingbitsSetup() {
   try {
     const r = await fetch('/api/wingbits/setup', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${state.token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${state.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
       signal: state.wingbitsAbort.signal,
     });
 
-    if (r.status === 409) {
-      output.textContent = 'Setup already in progress.';
-      return;
-    }
-    if (r.status === 503) {
-      const err = await r.json();
-      output.textContent = `Error: ${err.detail}`;
-      return;
-    }
+    if (r.status === 409) { output.textContent = 'Setup already in progress.'; return; }
+    if (r.status === 503) { const err = await r.json(); output.textContent = `Error: ${err.detail}`; return; }
     if (!r.ok) {
       let detail = 'Request failed';
       try { detail = (await r.json()).detail || detail; } catch {}
-      output.textContent = `Error: ${detail}`;
-      return;
+      output.textContent = `Error: ${detail}`; return;
     }
 
     const reader = r.body.getReader();
@@ -300,20 +355,15 @@ async function runWingbitsSetup() {
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-
       const parts = buf.split('\n\n');
       buf = parts.pop();
-
       for (const part of parts) {
         for (const line of part.split('\n')) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             try {
               const obj = JSON.parse(data);
-              if (obj.exit_code !== undefined) {
-                exitCode = obj.exit_code;
-                break;
-              }
+              if (obj.exit_code !== undefined) { exitCode = obj.exit_code; break; }
             } catch {}
             output.textContent += data + '\n';
             output.scrollTop = output.scrollHeight;
@@ -336,9 +386,7 @@ async function runWingbitsSetup() {
       loadWingbits();
     }
   } catch (e) {
-    if (e.name !== 'AbortError') {
-      output.textContent += '\nError: ' + e.message;
-    }
+    if (e.name !== 'AbortError') output.textContent += '\nError: ' + e.message;
   } finally {
     state.wingbitsAbort = null;
     btn.disabled = false;
@@ -353,26 +401,12 @@ function clearWingbitsOutput() {
   document.getElementById('wingbits-output-actions').classList.add('hidden');
 }
 
-function renderBeacon(d) {
-  const el = document.getElementById('beacon-body');
-  const lb = d.last_beacon
-    ? fmtTimestamp(d.last_beacon.timestamp)
-    : '<span class="dim">none recorded</span>';
-  const nb = d.next_beacon
-    ? fmtTimestamp(d.next_beacon)
-    : '<span class="dim">unknown</span>';
-  el.innerHTML = kv([
-    ['Last beacon',      lb],
-    ['Next beacon',      nb],
-    ['Witnesses (24 h)', `<strong>${d.witness_count_24h}</strong>`],
-  ]);
-}
+// ── System Info ──────────────────────────────────────────────────────────────
 
-function renderSysinfo(d) {
+function renderSysinfo(d, showHostname) {
   const el = document.getElementById('sysinfo-body');
   const temp = d.cpu_temp.replace("temp=", "").replace("'C", " °C");
 
-  // Parse free -m: "Mem:  total used free ..."
   let memLine = '';
   const memMatch = d.memory.match(/^Mem:\s+(\d+)\s+(\d+)\s+(\d+)/m);
   if (memMatch) {
@@ -383,7 +417,6 @@ function renderSysinfo(d) {
     memLine = `<span class="dim">${d.memory || 'unavailable'}</span>`;
   }
 
-  // Parse df -h: second line has size/used/avail/use%
   let diskLine = '';
   const diskRows = d.disk.trim().split('\n');
   if (diskRows.length >= 2) {
@@ -394,23 +427,182 @@ function renderSysinfo(d) {
   }
   if (!diskLine) diskLine = `<span class="dim">${d.disk || 'unavailable'}</span>`;
 
-  el.innerHTML = kv([
-    ['CPU temp', temp || 'unavailable'],
-    ['Memory',   memLine],
+  const rows = [
+    ['CPU temp', temp],
+    ['Memory', memLine],
     ['Disk /opt', diskLine],
+  ];
+  if (showHostname && d.hostname) {
+    rows.unshift(['Hostname', `<code>${d.hostname}</code>`]);
+  }
+  el.innerHTML = kv(rows);
+
+  // Build version card
+  const buildEl = document.getElementById('build-body');
+  buildEl.innerHTML = kv([
+    ['Image version', d.image_version || 'Development build'],
+    ['Built', d.build_date || '—'],
   ]);
 }
 
-// ── Logs ──────────────────────────────────────────────────────────────────────
+// ── Network — Interfaces ─────────────────────────────────────────────────────
+
+function startNetworkRefresh() {
+  loadNetwork();
+  state.netInterval = setInterval(loadNetwork, 30_000);
+}
+
+async function loadNetwork() {
+  const [ifaces, ts] = await Promise.allSettled([
+    api('/api/network/interfaces'),
+    api('/api/network/tailscale'),
+  ]);
+  if (ifaces.status === 'fulfilled') renderInterfaces(ifaces.value);
+  if (ts.status     === 'fulfilled') renderTailscale(ts.value);
+}
+
+function renderInterfaces(d) {
+  for (const name of ['eth0', 'wlan0']) {
+    const info = d[name] || {};
+    const el = document.getElementById(`iface-${name}`);
+    const linkLabel = info.link === 'Up' ? '<span class="badge badge-green">● Up</span>'
+      : info.link === 'N/A' ? '<span class="badge badge-dim">N/A</span>'
+      : '<span class="badge badge-yellow">● Down</span>';
+    const rows = [
+      ['Link', linkLabel],
+      ['MAC', info.mac ? `<code>${info.mac}</code>` : '<span class="dim">—</span>'],
+      ['IPv4', info.ipv4 ? `<code>${info.ipv4}</code>` : '<span class="dim">—</span>'],
+      ['IPv6', info.ipv6 ? `<code class="addr">${abbrev(info.ipv6)}</code>` : '<span class="dim">—</span>'],
+    ];
+    if (name === 'wlan0') {
+      rows.splice(1, 0, ['SSID', info.ssid || 'N/A']);
+    }
+    el.innerHTML = kv(rows);
+  }
+}
+
+// ── Network — Tailscale ──────────────────────────────────────────────────────
+
+function renderTailscale(d) {
+  const body = document.getElementById('tailscale-body');
+  const routingCard = document.getElementById('tailscale-routing-card');
+
+  if (d.status === 'not-installed') {
+    body.innerHTML = '<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-dim">○ Not installed</span></div>' +
+      '<p class="hint mt">Run <code>sudo /opt/gateway/scripts/install-tailscale.sh</code> to install.</p>';
+    routingCard.classList.add('hidden');
+    return;
+  }
+  if (d.status === 'stopped') {
+    body.innerHTML = '<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● Stopped</span></div>' +
+      '<p class="hint mt">Start with <code>sudo systemctl start tailscaled</code>.</p>';
+    routingCard.classList.add('hidden');
+    return;
+  }
+  if (d.status !== 'connected') {
+    body.innerHTML = `<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● ${d.status}</span></div>`;
+    routingCard.classList.add('hidden');
+    return;
+  }
+
+  routingCard.classList.remove('hidden');
+
+  const onlineLabel = d.online
+    ? '<span class="badge badge-green">● Connected</span>'
+    : '<span class="badge badge-yellow">● Offline</span>';
+
+  const ips = (d.ips || []).map(ip => `<code>${ip}</code>`).join(', ') || '<span class="dim">—</span>';
+  const hostname = d.hostname || '<span class="dim">—</span>';
+
+  body.innerHTML = kv([
+    ['Status', onlineLabel],
+    ['Tailscale IP', ips],
+    ['Hostname', hostname],
+    ['IP forwarding', d.ip_forward ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-dim">Disabled</span>'],
+    ['Advertised routes', d.advertised_routes || '<span class="dim">None</span>'],
+  ]);
+}
+
+// ── Network — Tailscale Auth ─────────────────────────────────────────────────
+
+function _tsKeyValidate(key) {
+  return /^tskey(-auth)?-[A-Za-z0-9]+$/.test(key);
+}
+
+function _tsKeyUpdateBtn() {
+  const key = document.getElementById('tailscale-key').value.trim();
+  const btn = document.getElementById('btn-tailscale-connect');
+  const msg = document.getElementById('tailscale-key-msg');
+  if (!key) {
+    btn.disabled = true;
+    msg.classList.add('hidden');
+    return;
+  }
+  if (_tsKeyValidate(key)) {
+    btn.disabled = false;
+    msg.classList.add('hidden');
+  } else {
+    btn.disabled = true;
+    msg.textContent = 'Key must start with tskey- or tskey-auth-';
+    msg.className = 'wingbits-input-msg';
+  }
+}
+
+async function connectTailscale() {
+  const key = document.getElementById('tailscale-key').value.trim();
+  if (!_tsKeyValidate(key)) return;
+  const btn = document.getElementById('btn-tailscale-connect');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+  try {
+    await api('/api/network/tailscale/auth', 'POST', { key });
+    showResult('tailscale-auth-result', 'Connected ✓', false);
+    document.getElementById('tailscale-key').value = '';
+    setTimeout(loadNetwork, 2000);
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('tailscale-auth-result', e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Connect';
+  }
+}
+
+// ── Network — Tailscale Routing ──────────────────────────────────────────────
+
+async function applyTailscaleRouting() {
+  const enabled = document.getElementById('tailscale-routing-toggle').checked;
+  const subnets = document.getElementById('tailscale-subnets').value.trim();
+  const btn = document.getElementById('btn-tailscale-routing');
+  btn.disabled = true;
+  btn.textContent = 'Applying…';
+  try {
+    await api('/api/network/tailscale/routing', 'POST', { enabled, subnets });
+    showResult('tailscale-routing-result', 'Applied ✓', false);
+    setTimeout(loadNetwork, 2000);
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('tailscale-routing-result', e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Apply';
+  }
+}
+
+// ── Logs ─────────────────────────────────────────────────────────────────────
 
 function startLogAutoRefresh() {
   loadLogs();
   state.logInterval = setInterval(loadLogs, 10_000);
 }
 
+function getActiveLogUnits() {
+  const pills = document.querySelectorAll('.log-pill.active');
+  return Array.from(pills).map(p => p.dataset.unit).join(',');
+}
+
 async function loadLogs() {
+  const units = getActiveLogUnits();
   try {
-    const data = await api('/api/logs');
+    const data = await api(`/api/logs?units=${encodeURIComponent(units)}`);
     state.logLines = data.lines;
     renderLogOutput();
     document.getElementById('log-status').textContent =
@@ -423,72 +615,18 @@ async function loadLogs() {
 }
 
 function renderLogOutput() {
-  const filter  = document.querySelector('.filter-btn.active')?.dataset.filter ?? 'all';
-  const output  = document.getElementById('log-output');
-  const lines   = filter === 'all'
-    ? state.logLines
-    : state.logLines.filter(l => l.toLowerCase().includes(filter));
-  output.textContent = lines.length ? lines.join('\n') : '(no matching log lines)';
+  const output = document.getElementById('log-output');
+  output.textContent = state.logLines.length ? state.logLines.join('\n') : '(no matching log lines)';
   output.scrollTop = output.scrollHeight;
 }
 
-// ── Band ──────────────────────────────────────────────────────────────────────
-
-async function loadBands() {
-  try {
-    const data = await api('/api/bands');
-    const sel  = document.getElementById('band-select');
-    sel.innerHTML = data.regions.map(r =>
-      `<option value="${r}"${r === data.current ? ' selected' : ''}>${r}</option>`
-    ).join('');
-    document.getElementById('current-band').textContent = data.current || '—';
-  } catch (e) {
-    if (e.message !== 'unauthorized') showResult('band-result', e.message, true);
-  }
-}
-
-async function applyBand() {
-  const region = document.getElementById('band-select').value;
-  const btn    = document.getElementById('btn-apply-band');
-  btn.disabled = true;
-  btn.textContent = 'Applying…';
-  try {
-    await api('/api/band', 'POST', { region });
-    showResult('band-result', `Band set to ${region}`, false);
-    document.getElementById('current-band').textContent = region;
-  } catch (e) {
-    if (e.message !== 'unauthorized') showResult('band-result', e.message, true);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Apply Band';
-  }
-}
-
-// ── Settings ──────────────────────────────────────────────────────────────────
+// ── Settings ─────────────────────────────────────────────────────────────────
 
 async function loadSettings() {
   try {
     const s = await api('/api/settings');
-    document.getElementById('lan-toggle').checked = s.lan_access;
-    document.getElementById('port-input').value   = s.port;
-    updateLanHint(s.lan_access, s.bind_host);
-  } catch (e) { /* ignore if tab just opened */ }
-}
-
-function updateLanHint(enabled, host) {
-  const hint = document.getElementById('lan-hint');
-  hint.textContent = enabled ? 'Binding 0.0.0.0 (LAN + Tailscale)' : `Binding ${host} (Tailscale only)`;
-}
-
-async function setLanAccess(enabled) {
-  try {
-    const r = await api('/api/settings/lan', 'POST', { enabled });
-    updateLanHint(enabled, r.bind_host);
-  } catch (e) {
-    if (e.message !== 'unauthorized') alert(`Failed: ${e.message}`);
-    // Revert toggle
-    document.getElementById('lan-toggle').checked = !enabled;
-  }
+    document.getElementById('port-input').value = s.port;
+  } catch (e) {}
 }
 
 async function savePort() {
@@ -526,7 +664,6 @@ async function regenToken() {
     document.getElementById('new-token-value').textContent = r.token;
     document.getElementById('new-token-box').classList.remove('hidden');
     document.getElementById('btn-regen-token').disabled = true;
-    // Update stored token so UI stays live until service restarts
     state.token = r.token;
     localStorage.setItem('gw_token', r.token);
   } catch (e) {
@@ -539,9 +676,7 @@ async function copyToken() {
   try {
     await navigator.clipboard.writeText(val);
     document.getElementById('btn-copy-token').textContent = 'Copied ✓';
-    setTimeout(() => {
-      document.getElementById('btn-copy-token').textContent = 'Copy to clipboard';
-    }, 2000);
+    setTimeout(() => { document.getElementById('btn-copy-token').textContent = 'Copy to clipboard'; }, 2000);
   } catch {
     alert('Copy failed — select and copy manually.');
   }
@@ -550,11 +685,9 @@ async function copyToken() {
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 function kv(pairs) {
-  return pairs.map(([k, v]) => `
-    <div class="kv-row">
-      <span class="kv-label">${k}</span>
-      <span class="kv-value">${v}</span>
-    </div>`).join('');
+  return pairs.map(([k, v]) =>
+    `<div class="kv-row"><span class="kv-label">${k}</span><span class="kv-value">${v}</span></div>`
+  ).join('');
 }
 
 function abbrev(addr) {
@@ -576,7 +709,7 @@ function fmtTimestamp(ts) {
 function showResult(id, msg, isError) {
   const el = document.getElementById(id);
   el.textContent = msg;
-  el.className   = 'result-msg ' + (isError ? 'result-error' : 'result-ok');
+  el.className = 'result-msg ' + (isError ? 'result-error' : 'result-ok');
   setTimeout(() => { el.textContent = ''; el.className = 'result-msg'; }, 5000);
 }
 
@@ -594,8 +727,8 @@ function wireEvents() {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
-  // Dashboard — restart buttons (delegated)
-  document.getElementById('services-body').addEventListener('click', async e => {
+  // Applications — restart buttons (delegated)
+  document.getElementById('helium-services-body').addEventListener('click', async e => {
     const btn = e.target.closest('.btn-restart');
     if (!btn) return;
     const service = btn.dataset.service;
@@ -603,7 +736,7 @@ function wireEvents() {
     btn.textContent = '…';
     try {
       await api(`/api/restart/${service}`, 'POST');
-      setTimeout(loadDashboard, 2000);
+      setTimeout(loadApplications, 2000);
     } catch (err) {
       if (err.message !== 'unauthorized') alert(`Restart failed: ${err.message}`);
     } finally {
@@ -612,29 +745,32 @@ function wireEvents() {
     }
   });
 
-  // Logs
-  document.getElementById('btn-refresh-logs').addEventListener('click', loadLogs);
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderLogOutput();
-    });
-  });
-
-  // Band
+  // Applications — band
   document.getElementById('btn-apply-band').addEventListener('click', applyBand);
 
-  // Wingbits setup
+  // Applications — Wingbits setup
   document.getElementById('wingbits-url').addEventListener('input', _wingbitsUpdateBtn);
   document.getElementById('btn-wingbits-run').addEventListener('click', runWingbitsSetup);
   document.getElementById('btn-wingbits-clear').addEventListener('click', clearWingbitsOutput);
 
-  // Settings — network
-  document.getElementById('lan-toggle').addEventListener('change', e => {
-    setLanAccess(e.target.checked);
-  });
+  // Network — Tailscale auth
+  document.getElementById('tailscale-key').addEventListener('input', _tsKeyUpdateBtn);
+  document.getElementById('btn-tailscale-connect').addEventListener('click', connectTailscale);
+
+  // Network — Tailscale routing
+  document.getElementById('btn-tailscale-routing').addEventListener('click', applyTailscaleRouting);
+
+  // Network — Port
   document.getElementById('btn-save-port').addEventListener('click', savePort);
+
+  // Logs
+  document.getElementById('btn-refresh-logs').addEventListener('click', loadLogs);
+  document.querySelectorAll('.log-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      pill.classList.toggle('active');
+      loadLogs();
+    });
+  });
 
   // Settings — auth
   document.getElementById('btn-reveal-token').addEventListener('click', revealToken);
@@ -666,7 +802,6 @@ async function init() {
     if (e.message === 'unauthorized') {
       showModal(false);
     } else {
-      // Service temporarily unreachable — still proceed
       hideModal();
       initApp();
     }

@@ -29,37 +29,23 @@
       <span id="header-name" class="brand-sub"></span>
     </div>
     <nav class="tab-nav" role="tablist">
-      <button class="tab-btn active" data-tab="dashboard" role="tab">Dashboard</button>
-      <button class="tab-btn"        data-tab="logs"      role="tab">Live Log</button>
-      <button class="tab-btn"        data-tab="band"      role="tab">Band</button>
-      <button class="tab-btn"        data-tab="wingbits"  role="tab">Wingbits</button>
-      <button class="tab-btn"        data-tab="settings"  role="tab">Settings</button>
+      <button class="tab-btn active" data-tab="dashboard"    role="tab">Dashboard</button>
+      <button class="tab-btn"        data-tab="applications" role="tab">Applications</button>
+      <button class="tab-btn"        data-tab="network"      role="tab">Network</button>
+      <button class="tab-btn"        data-tab="logs"         role="tab">Live Log</button>
+      <button class="tab-btn"        data-tab="settings"     role="tab">Settings</button>
     </nav>
   </header>
 
   <main class="app-main">
 
-    <!-- ── Dashboard ─────────────────────────────────────────────── -->
+    <!-- ── Dashboard ──────────────────────────────────────────── -->
     <section id="tab-dashboard" class="tab-panel active" role="tabpanel">
       <div class="dashboard-grid">
 
         <div class="card">
-          <div class="card-header">Gateway Identity</div>
-          <div class="card-body" id="identity-body">
-            <div class="spinner"></div>
-          </div>
-        </div>
-
-        <div class="card">
           <div class="card-header">Services</div>
-          <div class="card-body" id="services-body">
-            <div class="spinner"></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">Beacons &amp; Witnesses</div>
-          <div class="card-body" id="beacon-body">
+          <div class="card-body" id="dash-services-body">
             <div class="spinner"></div>
           </div>
         </div>
@@ -71,48 +57,66 @@
           </div>
         </div>
 
+        <div class="card">
+          <div class="card-header">Build</div>
+          <div class="card-body" id="build-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
       </div>
     </section>
 
-    <!-- ── Live Log ───────────────────────────────────────────────── -->
-    <section id="tab-logs" class="tab-panel hidden" role="tabpanel">
-      <div class="log-toolbar">
-        <div class="filter-group" role="group" aria-label="Log filter">
-          <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn"        data-filter="beacon">Beacons</button>
-          <button class="filter-btn"        data-filter="witness">Witnesses</button>
-        </div>
-        <div class="log-toolbar-right">
-          <span id="log-status" class="log-status"></span>
-          <button id="btn-refresh-logs" class="btn btn-sm">Refresh</button>
-        </div>
-      </div>
-      <pre id="log-output" class="log-output">Loading…</pre>
-    </section>
+    <!-- ── Applications ───────────────────────────────────────── -->
+    <section id="tab-applications" class="tab-panel hidden" role="tabpanel">
 
-    <!-- ── Band Selection ─────────────────────────────────────────── -->
-    <section id="tab-band" class="tab-panel hidden" role="tabpanel">
-      <div class="card card-narrow">
-        <div class="card-header">Frequency Band</div>
-        <div class="card-body">
-          <div class="kv-row">
-            <span class="kv-label">Active band</span>
-            <span id="current-band" class="badge badge-info">—</span>
-          </div>
-          <div class="field-group">
-            <label class="field-label" for="band-select">Select band</label>
-            <select id="band-select" class="select"></select>
-          </div>
-          <div class="action-row">
-            <button id="btn-apply-band" class="btn btn-primary">Apply Band</button>
-            <span id="band-result" class="result-msg"></span>
+      <h3 class="sub-section-title">Helium</h3>
+
+      <div class="dashboard-grid">
+
+        <div class="card">
+          <div class="card-header">Gateway Identity</div>
+          <div class="card-body" id="identity-body">
+            <div class="spinner"></div>
           </div>
         </div>
-      </div>
-    </section>
 
-    <!-- ── Wingbits ─────────────────────────────────────────────── -->
-    <section id="tab-wingbits" class="tab-panel hidden" role="tabpanel">
+        <div class="card">
+          <div class="card-header">Services</div>
+          <div class="card-body" id="helium-services-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">Beacons &amp; Witnesses</div>
+          <div class="card-body" id="beacon-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <div class="card card-narrow">
+          <div class="card-header">LoRa Region Configuration</div>
+          <div class="card-body">
+            <div class="kv-row">
+              <span class="kv-label">Active band</span>
+              <span id="current-band" class="badge badge-info">—</span>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="band-select">Select band</label>
+              <select id="band-select" class="select"></select>
+            </div>
+            <div class="action-row">
+              <button id="btn-apply-band" class="btn btn-primary">Apply Band</button>
+              <span id="band-result" class="result-msg"></span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <h3 class="sub-section-title">Wingbits</h3>
+
       <div class="dashboard-grid">
 
         <div class="card">
@@ -159,37 +163,133 @@
           </div>
         </div>
 
+        <div class="card">
+          <div class="card-header">Stats (Coming Soon)</div>
+          <div class="card-body">
+            <div class="coming-soon">
+              <p>Satellites in view</p>
+              <p>Aircraft tracked</p>
+              <p><a href="#" class="dim">tar1090 map</a></p>
+              <p><a href="#" class="dim">Wingbits dashboard</a></p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
 
-    <!-- ── Settings ───────────────────────────────────────────────── -->
-    <section id="tab-settings" class="tab-panel hidden" role="tabpanel">
-      <div class="settings-grid">
+    <!-- ── Network ─────────────────────────────────────────────── -->
+    <section id="tab-network" class="tab-panel hidden" role="tabpanel">
+
+      <h3 class="sub-section-title">Interfaces</h3>
+
+      <div class="dashboard-grid" id="interfaces-grid">
+        <div class="card">
+          <div class="card-header">Wired (eth0)</div>
+          <div class="card-body" id="iface-eth0"><div class="spinner"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header">Wireless (wlan0)</div>
+          <div class="card-body" id="iface-wlan0"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <h3 class="sub-section-title">Tailscale</h3>
+
+      <div class="dashboard-grid">
+        <div class="card">
+          <div class="card-header">Status</div>
+          <div class="card-body" id="tailscale-body">
+            <div class="spinner"></div>
+          </div>
+        </div>
 
         <div class="card">
-          <div class="card-header">Network</div>
+          <div class="card-header">Setup / Auth</div>
+          <div class="card-body">
+            <p class="hint" style="margin-bottom:.75rem;line-height:1.6">
+              Paste an auth key from the Tailscale admin console
+              (<strong>tailscale.com/admin/settings/keys</strong>) to connect this
+              device to your tailnet. Re-paste a new key at any time to re-authenticate.
+            </p>
+            <div class="field-group">
+              <label class="field-label" for="tailscale-key">Auth key</label>
+              <input type="password" id="tailscale-key" class="wingbits-input"
+                     placeholder="tskey-auth-xxxxxxxxxxxxx"
+                     autocomplete="off" spellcheck="false">
+              <span id="tailscale-key-msg" class="wingbits-input-msg hidden"></span>
+            </div>
+            <div class="action-row">
+              <button id="btn-tailscale-connect" class="btn btn-primary" disabled>Connect</button>
+              <span id="tailscale-auth-result" class="result-msg"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="tailscale-routing-card">
+          <div class="card-header">Subnet Routing</div>
           <div class="card-body">
             <div class="toggle-row">
-              <div class="toggle-label">
-                <span>LAN access</span>
-                <span class="hint" id="lan-hint">Binding 0.0.0.0</span>
-              </div>
-              <label class="switch" aria-label="LAN access toggle">
-                <input type="checkbox" id="lan-toggle" checked>
+              <span>Enable subnet routing</span>
+              <label class="switch" aria-label="Subnet routing toggle">
+                <input type="checkbox" id="tailscale-routing-toggle">
                 <span class="slider"></span>
               </label>
             </div>
             <div class="field-group mt">
-              <label class="field-label" for="port-input">Port</label>
-              <div class="input-row">
-                <input type="number" id="port-input" class="input-sm"
-                       min="1024" max="65535" value="8080">
-                <button id="btn-save-port" class="btn btn-sm btn-primary">Save</button>
-                <span id="port-result" class="result-msg"></span>
-              </div>
+              <label class="field-label" for="tailscale-subnets">Advertised subnets</label>
+              <input type="text" id="tailscale-subnets" class="wingbits-input"
+                     placeholder="192.168.1.0/24"
+                     autocomplete="off">
+              <span class="hint">To advertise multiple subnets, separate with commas — e.g. <code>192.168.1.0/24,10.0.0.0/24</code></span>
+            </div>
+            <div class="action-row">
+              <button id="btn-tailscale-routing" class="btn btn-primary">Apply</button>
+              <span id="tailscale-routing-result" class="result-msg"></span>
             </div>
           </div>
         </div>
+      </div>
+
+      <h3 class="sub-section-title">Web UI</h3>
+
+      <div class="card card-narrow">
+        <div class="card-header">Port</div>
+        <div class="card-body">
+          <div class="field-group">
+            <label class="field-label" for="port-input">Web UI port</label>
+            <div class="input-row">
+              <input type="number" id="port-input" class="input-sm"
+                     min="1024" max="65535" value="8080">
+              <button id="btn-save-port" class="btn btn-sm btn-primary">Save</button>
+              <span id="port-result" class="result-msg"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── Live Log ────────────────────────────────────────────── -->
+    <section id="tab-logs" class="tab-panel hidden" role="tabpanel">
+      <div class="log-toolbar">
+        <div class="filter-group" role="group" aria-label="Log filters">
+          <button class="log-pill active" data-unit="system">System</button>
+          <button class="log-pill active" data-unit="helium">Helium</button>
+          <button class="log-pill active" data-unit="wingbits">Wingbits</button>
+          <button class="log-pill active" data-unit="tailscale">Tailscale</button>
+        </div>
+        <div class="log-toolbar-right">
+          <span id="log-status" class="log-status"></span>
+          <button id="btn-refresh-logs" class="btn btn-sm">Refresh</button>
+        </div>
+      </div>
+      <pre id="log-output" class="log-output">Loading…</pre>
+    </section>
+
+    <!-- ── Settings ────────────────────────────────────────────── -->
+    <section id="tab-settings" class="tab-panel hidden" role="tabpanel">
+      <div class="settings-grid">
 
         <div class="card">
           <div class="card-header">Authentication</div>

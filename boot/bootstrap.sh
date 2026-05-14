@@ -132,7 +132,18 @@ done
 systemctl daemon-reload
 green "Systemd units installed and enabled"
 
-# ── 5. Wingbits deps ─────────────────────────────────────────────────────────
+# ── 5. Tailscale install ─────────────────────────────────────────────────────
+
+echo ""
+echo "--- Tailscale ---"
+if [ -x "${REPO_DIR}/scripts/install-tailscale.sh" ]; then
+    "${REPO_DIR}/scripts/install-tailscale.sh"
+    green "Tailscale installed"
+else
+    warn "install-tailscale.sh not found or not executable — skipping"
+fi
+
+# ── 6. Wingbits deps ─────────────────────────────────────────────────────────
 
 echo ""
 echo "--- Wingbits Dependencies ---"
@@ -143,7 +154,7 @@ else
     warn "install-wingbits-deps.sh not found or not executable — skipping"
 fi
 
-# ── 6. Post-provisioning summary ─────────────────────────────────────────────
+# ── 7. Post-provisioning summary ─────────────────────────────────────────────
 
 echo ""
 echo "============================================"

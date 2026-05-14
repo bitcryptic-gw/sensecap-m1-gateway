@@ -176,7 +176,18 @@ else
 fi
 echo "[build] config.txt merged"
 
-# ── 7. Unmount (cleanup trap handles this) ────────────────────────────────────
+# ── 7. Write /etc/gateway-release ─────────────────────────────────────────────
+echo ""
+echo "--- Writing /etc/gateway-release ---"
+DATE_TAG=$(date +%Y.%m.%d)
+DATE_ISO=$(date +%Y-%m-%d)
+{
+    echo "IMAGE_VERSION=${DATE_TAG}"
+    echo "BUILD_DATE=${DATE_ISO}"
+} > "${WORKDIR}/mnt/root/etc/gateway-release"
+echo "[build] Wrote /etc/gateway-release with version ${DATE_TAG}"
+
+# ── 8. Unmount (cleanup trap handles this) ────────────────────────────────────
 echo ""
 echo "--- Unmounting ---"
 # Trap will handle unmount and detach; just report that we're done with image
