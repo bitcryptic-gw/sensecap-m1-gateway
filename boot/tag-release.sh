@@ -18,7 +18,7 @@ TAG="v${DATE}"
 # Check if tag already exists locally or remotely, append .N if needed
 SUFFIX=""
 while git rev-parse "${TAG}${SUFFIX}" &>/dev/null || \
-      git ls-remote --tags origin "${TAG}${SUFFIX}" &>/dev/null; do
+      git ls-remote --tags origin "${TAG}${SUFFIX}" | grep -q .; do
     if [ -z "$SUFFIX" ]; then
         SUFFIX=".1"
     else
