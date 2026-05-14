@@ -43,6 +43,8 @@ The goal is a gateway you can fully understand, audit, and trust — running on 
 
 ## Quick Start
 
+> **Fresh install?** For full first-time provisioning, run `sudo bash boot/bootstrap.sh` after cloning the repo. See the script header for prerequisites. A flashable image with automated first-boot provisioning is on the roadmap.
+
 1. **Flash** a fresh Raspberry Pi OS Lite (64-bit) to the SenseCap M1 SD card
 2. **Copy** `config.env.example` to `config.env` on the boot partition and edit it:
    ```
@@ -122,7 +124,7 @@ Helium IoT Network (mainnet)
 - `pktfwd.service` runs the Semtech packet forwarder, which handles SX1302 hardware and forwards raw LoRa packets as UDP datagrams
 - `gateway-rs.service` runs the native `helium_gateway` binary, connecting to the Helium mainnet using the ECC608A secure element for identity
 - `gateway-platform.service` (oneshot) runs `first-boot.sh` at startup to configure everything
-- **Docker** is installed by `first-boot.sh` and used for optional containers (Wingbits, web UI) — it is not part of the core LoRa/Helium data path
+- **Docker** is installed on the device and available for operator use, but is not used by any part of the Helium or Wingbits stack
 
 ---
 
@@ -211,14 +213,20 @@ port=8080
 
 ## Wingbits (Optional)
 
-Wingbits is an optional ADS-B data aggregation service. To enable it, uncomment the `wingbits` block in `docker/docker-compose.yml` and configure your Wingbits account credentials.
+Wingbits is an optional ADS-B data aggregation service. It runs as native systemd services (`readsb.service` + `wingbits.service`) independent of the Helium stack and does not interfere with LoRaWAN operation.
+
+### Setup
 
 ```bash
-cd /opt/gateway
-docker compose up -d wingbits
+# One-time: install udev rule and systemd override for graceful no-hardware start
+sudo /opt/gateway/scripts/install-wingbits-deps.sh
+
+# Setup or reconfigure: accepts the station URL from the Wingbits dashboard
+sudo /opt/gateway/scripts/wingbits-setup.sh "https://gitlab.com/wingbits/config/-/raw/install.sh?station_id=..."
 ```
 
-Wingbits runs independently of the Helium stack and does not interfere with LoRaWAN operation.
+`install-wingbits-deps.sh` is a one-time dependency install (udev rule for RTL-SDR, readsb systemd override for retry-on-failure).  
+`wingbits-setup.sh` is idempotent and re-runnable — use it for first-time setup, station relocation, or changing the station ID.
 
 ---
 
