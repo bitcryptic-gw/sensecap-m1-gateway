@@ -20,7 +20,7 @@ systemd/      — service unit files (copied to /etc/systemd/system/ on device)
 gateway-ui/   — FastAPI web UI source
 pktfwd/       — packet forwarder binaries/config
 docker/       — Docker configs for non-Helium/non-Wingbits workloads only
-boot/         — boot config fragments
+boot/         — boot config fragments (config.txt, future bootstrap.sh)
 ```
 
 ## Services
@@ -40,8 +40,6 @@ boot/         — boot config fragments
 - **GPIO:** Reset BCM 17, Power BCM 27, SX1261 BCM 5
 - **Helium identity:** `jumpy-carrot-salmon`
 - **Fake GPS:** -33.7936 / 151.2489 / 65m (Helium only — Wingbits uses GeoSigner GPS)
-- **Tailscale:** `sensecap-m1.myth-nessie.ts.net`
-- **SSH:** `ssh bitcryptic@sensecap-m1`
 
 ## Web UI
 
@@ -49,6 +47,31 @@ boot/         — boot config fragments
 - Auth: Bearer token stored at `/etc/gateway-ui/token`
 - Runs as: `gateway-ui` user (groups: `systemd-journal`, `i2c`)
 - Tabs: band selection, live logs, restart buttons, token regen, CPU temp, Wingbits status
+
+## Primary user ownership — critical
+
+`/opt/gateway/` must be owned by the primary non-root user, not root. The primary user is whoever was created during OS setup — it is **not** hardcoded and will differ between installs.
+
+**Never hardcode a username** (`bitcryptic` or otherwise) in any provisioning script, systemd unit, or bootstrap code. Always derive the primary user at runtime:
+
+```bash
+PRIMARY_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}')
+```
+
+The bootstrap script (`boot/bootstrap.sh`, not yet written — roadmap item) is responsible for:
+- Deriving the primary user dynamically
+- Creating `/opt/gateway/` with correct ownership before cloning
+- Cloning the repo as the primary user (not root)
+- Installing systemd units and running first-time setup
+
+Until the bootstrap script exists, provisioning is manual. The correct sequence is:
+
+```bash
+PRIMARY_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}')
+sudo mkdir -p /opt/gateway
+sudo chown "$PRIMARY_USER:$PRIMARY_USER" /opt/gateway
+git clone https://github.com/bitcryptic-gw/sensecap-m1-gateway /opt/gateway
+```
 
 ## Docker policy
 
@@ -75,6 +98,7 @@ Docker is installed on the device but is **not used for Helium or Wingbits**. Bo
 
 ## What not to do
 
+- Do not hardcode any username — always derive the primary user dynamically
 - Do not add dependencies that require internet access at runtime
 - Do not introduce a build step that requires the Pi (all compilation happens on Mac or in CI)
 - Do not add Docker for anything Helium or Wingbits related
