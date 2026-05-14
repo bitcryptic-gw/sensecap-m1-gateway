@@ -1,0 +1,82 @@
+# sensecap-m1-gateway — Agent Context
+
+## What this is
+
+A self-hosted Helium IoT gateway and ADS-B (Wingbits) station running on Raspberry Pi 4B + RAK2287 (SX1302 LoRa) + ATECC608A ECC chip. Debian Trixie, ARM64. No Docker Hub, no container registry, no CI/CD pipeline — just a live git clone on the Pi.
+
+## Deploy pattern — read this first
+
+- **Repo on Pi:** `/opt/gateway/` (live git clone)
+- **Deploy:** commit on Mac → push → `git pull` on Pi → `sudo systemctl restart <service>`
+- **Never** run git operations beyond `git pull` on the Pi
+- **Never** use `git commit`, `git push`, `git merge`, or `git rebase` on the Pi
+
+## Repo layout
+
+```
+config/       — lora_pkt_fwd and gateway-rs config files
+scripts/      — helper and setup scripts
+systemd/      — service unit files (copied to /etc/systemd/system/ on device)
+gateway-ui/   — FastAPI web UI source
+pktfwd/       — packet forwarder binaries/config
+docker/       — Docker configs for non-Helium/non-Wingbits workloads only
+boot/         — boot config fragments
+```
+
+## Services
+
+| Service | Binary | Purpose |
+|---|---|---|
+| `pktfwd.service` | `lora_pkt_fwd` 2.1.0 | LoRa packet forwarder (sx1302_hal) |
+| `gateway-rs.service` | `helium_gateway` 1.3.0 | Helium IoT mainnet gateway |
+| `gateway-ui.service` | FastAPI (Python) | Web UI, port 8080, Bearer token auth |
+| `readsb.service` | readsb | ADS-B decoder (Wingbits) |
+| `wingbits.service` | wingbits client | Wingbits data feed + GeoSigner |
+
+## Key hardware & identity
+
+- **LoRa:** RAK2287, SPI `/dev/spidev0.0`, AU915
+- **ECC:** ATECC608A, i2c-1 0x60 (Helium swarm key slot 0, onboarding slot 15)
+- **GPIO:** Reset BCM 17, Power BCM 27, SX1261 BCM 5
+- **Helium identity:** `jumpy-carrot-salmon`
+- **Fake GPS:** -33.7936 / 151.2489 / 65m (Helium only — Wingbits uses GeoSigner GPS)
+- **Tailscale:** `sensecap-m1.myth-nessie.ts.net`
+- **SSH:** `ssh bitcryptic@sensecap-m1`
+
+## Web UI
+
+- URL: `http://sensecap-m1:8080` (Tailscale only)
+- Auth: Bearer token stored at `/etc/gateway-ui/token`
+- Runs as: `gateway-ui` user (groups: `systemd-journal`, `i2c`)
+- Tabs: band selection, live logs, restart buttons, token regen, CPU temp, Wingbits status
+
+## Docker policy
+
+Docker is installed on the device but is **not used for Helium or Wingbits**. Both stacks run as native systemd services. Docker is reserved for unrelated future workloads. Do not containerise readsb, wingbits, lora_pkt_fwd, helium_gateway, or gateway-ui.
+
+## Wingbits specifics
+
+- Stack: `readsb` (native) + `wingbits` client (native), both managed by systemd
+- Beast mode is mandatory — NET_OPTIONS must include:
+  `--net-connector localhost,30015,beast_reduce_out --net-beast-reduce-optimize-for-mlat --net-beast-reduce-interval=0.125`
+- SDR symlink: `/dev/rtlsdr0` (via udev rule `99-rtlsdr.rules`)
+- GeoSigner: USB device, handled by the official wingbits client
+- Setup/reconfiguration: `sudo /opt/gateway/scripts/wingbits-setup.sh "<dashboard-url>"`
+- readsb must tolerate absent SDR hardware (retry loop, does not block boot)
+
+## Coding standards
+
+- Shell scripts: `set -euo pipefail`, executable bit committed
+- Python: validate all inputs, enforce request body size limits
+- Secrets: never in CLI args or env vars visible in process listings — use file mounts (`/etc/gateway-ui/token`, etc.)
+- Token comparisons: timing-safe only
+- Refuse to start if required secrets are unset
+- Principle of least privilege throughout — services run as dedicated users, not root
+
+## What not to do
+
+- Do not add dependencies that require internet access at runtime
+- Do not introduce a build step that requires the Pi (all compilation happens on Mac or in CI)
+- Do not add Docker for anything Helium or Wingbits related
+- Do not generate `AGENTS.md` content speculatively — update it only to reflect real changes
+- Do not use `git` beyond `git pull` in any script that runs on the Pi
