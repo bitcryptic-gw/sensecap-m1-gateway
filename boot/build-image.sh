@@ -8,6 +8,7 @@ set -euo pipefail
 WORKDIR="$(mktemp -d)"
 IMG_NAME="sensecap-m1-gateway"
 OUTPUT_DIR="${OUTPUT_DIR:-.}"
+IMAGE_VERSION="${IMAGE_VERSION:-$(date +%Y.%m.%d)}"
 
 BASE_URL="https://downloads.raspberrypi.com/raspios_lite_arm64/images"
 
@@ -179,13 +180,12 @@ echo "[build] config.txt merged"
 # ── 7. Write /etc/gateway-release ─────────────────────────────────────────────
 echo ""
 echo "--- Writing /etc/gateway-release ---"
-DATE_TAG=$(date +%Y.%m.%d)
 DATE_ISO=$(date +%Y-%m-%d)
 {
-    echo "IMAGE_VERSION=${DATE_TAG}"
+    echo "IMAGE_VERSION=${IMAGE_VERSION}"
     echo "BUILD_DATE=${DATE_ISO}"
 } > "${WORKDIR}/mnt/root/etc/gateway-release"
-echo "[build] Wrote /etc/gateway-release with version ${DATE_TAG}"
+echo "[build] Wrote /etc/gateway-release with version ${IMAGE_VERSION}"
 
 # ── 8. Unmount (cleanup trap handles this) ────────────────────────────────────
 echo ""
@@ -196,8 +196,7 @@ echo "[build] Image modifications complete"
 # ── 8. Compress ───────────────────────────────────────────────────────────────
 echo ""
 echo "--- Compressing ---"
-DATE_TAG=$(date +%Y.%m.%d)
-OUTPUT_FILE="${OUTPUT_DIR}/${IMG_NAME}-${DATE_TAG}.img.xz"
+OUTPUT_FILE="${OUTPUT_DIR}/${IMG_NAME}-${IMAGE_VERSION}.img.xz"
 echo "[build] Compressing to ${OUTPUT_FILE}..."
 # Use all available cores for compression
 xz -T0 -9 "${IMAGE}"
@@ -210,4 +209,4 @@ echo "=== Build Complete ==="
 echo "Image: ${OUTPUT_FILE}"
 echo "Size:  $(du -h "$OUTPUT_FILE" | cut -f1)"
 echo "SHA256: $(sha256sum "$OUTPUT_FILE" | cut -d' ' -f1)"
-echo "Date:   ${DATE_TAG}"
+echo "Version: ${IMAGE_VERSION}"
