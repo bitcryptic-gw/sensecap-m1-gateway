@@ -15,8 +15,7 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=gateway-ui
 
-# Minimal hardening: no privilege escalation, private /tmp
-NoNewPrivileges=yes
+# Privilege boundary enforced via setuid wrappers — see scripts/*-wrapper.c
 PrivateTmp=yes
 
 [Install]

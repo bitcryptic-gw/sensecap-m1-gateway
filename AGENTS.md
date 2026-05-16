@@ -45,7 +45,7 @@ boot/         — boot config fragments (config.txt, future bootstrap.sh)
 
 - URL: `http://sensecap-m1:8080` (Tailscale only)
 - Auth: Bearer token stored at `/etc/gateway-ui/token`
-- Runs as: `gateway-ui` user (groups: `systemd-journal`, `i2c`)
+- Runs as: `gateway-ui` user (groups: `systemd-journal`, `i2c`). Privilege escalation via setuid wrappers (`scripts/*-wrapper.c`)
 - Tabs: band selection, live logs, restart buttons, token regen, CPU temp, Wingbits status
 
 ## Primary user ownership — critical
