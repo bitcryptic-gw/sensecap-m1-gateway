@@ -4,12 +4,12 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <pwd.h>
 #include <grp.h>
 #include <errno.h>
 
 #define REPO_DIR "/opt/gateway"
-#define TAILSCALE_UNITS "tailscaled.service"
 #define ALLOWED_UNITS \
     "pktfwd.service,gateway-rs.service,gateway-ui.service," \
     "readsb.service,wingbits.service,tailscaled.service"
@@ -26,13 +26,43 @@ static int is_allowed(const char *name) {
     return 0;
 }
 
-static int run_cmd(char *const argv[]) {
+/* Run argv via execvp, inheriting stdin/stdout/stderr. Return exit code. */
+static int run(char *const argv[]) {
     pid_t pid = fork();
     if (pid == -1) return -1;
     if (pid == 0) {
         execvp(argv[0], argv);
         _exit(127);
     }
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    return -1;
+}
+
+/* Run argv via execvp, capture stdout into buf (up to bufsz-1 bytes, NUL-terminated).
+   Stderr passes through to parent. Return exit code. */
+static int run_capture(char *const argv[], char *buf, size_t bufsz) {
+    int pipefd[2];
+    if (pipe(pipefd) == -1) return -1;
+    pid_t pid = fork();
+    if (pid == -1) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return -1;
+    }
+    if (pid == 0) {
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+    close(pipefd[1]);
+    ssize_t n = read(pipefd[0], buf, bufsz - 1);
+    if (n > 0) buf[n] = '\0';
+    else buf[0] = '\0';
+    close(pipefd[0]);
     int status;
     waitpid(pid, &status, 0);
     if (WIFEXITED(status)) return WEXITSTATUS(status);
@@ -55,7 +85,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Parse and validate service list
+    /* Parse and validate service list */
     char svc_buf[1024];
     strncpy(svc_buf, argv[1], sizeof(svc_buf) - 1);
     svc_buf[sizeof(svc_buf) - 1] = '\0';
@@ -81,14 +111,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Become root for filesystem ops
+    /* Become root for filesystem ops */
     setgroups(0, NULL);
-    gid_t root_gid = 0;
-    uid_t root_uid = 0;
-    setgid(root_gid);
-    setuid(root_uid);
+    setgid(0);
+    setuid(0);
 
-    // Determine repo owner
+    /* Determine repo owner from /opt/gateway directory stat */
     struct stat st;
     if (stat(REPO_DIR, &st) != 0) {
         fprintf(stderr, "ERROR: cannot stat %s: %s\n", REPO_DIR, strerror(errno));
@@ -96,82 +124,73 @@ int main(int argc, char *argv[]) {
     }
     uid_t repo_owner = st.st_uid;
 
-    // chdir to repo
+    /* chdir to repo */
     if (chdir(REPO_DIR) != 0) {
         fprintf(stderr, "ERROR: cannot chdir to %s: %s\n", REPO_DIR, strerror(errno));
         return 1;
     }
 
-    // Capture pre-pull HEAD
-    FILE *fp;
+    /* Line-buffer stdout for SSE streaming */
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
+    /* Capture pre-pull HEAD */
     char pre_head[128] = "";
-    fp = popen("git rev-parse HEAD 2>/dev/null", "r");
-    if (fp) {
-        if (fgets(pre_head, sizeof(pre_head), fp)) {
-            char *nl = strchr(pre_head, '\n');
-            if (nl) *nl = '\0';
-        }
-        pclose(fp);
+    run_capture((char *[]){"git", "rev-parse", "HEAD", NULL},
+                pre_head, sizeof(pre_head));
+    if (pre_head[0]) {
+        char *nl = strchr(pre_head, '\n');
+        if (nl) *nl = '\0';
     }
 
-    // git pull as repo owner
+    /* git pull as repo owner */
     setuid(repo_owner);
     setgid(0);
 
-    setvbuf(stdout, NULL, _IOLBF, 0);
+    int pull_rc = run((char *[]){"git", "pull", NULL});
 
-    int pull_rc = system("git pull 2>&1");
-    pull_rc = WEXITSTATUS(pull_rc);
-
-    // Become root again
-    setuid(root_uid);
-    setgid(root_gid);
+    /* Become root again */
+    setuid(0);
+    setgid(0);
 
     if (pull_rc != 0) {
         fprintf(stderr, "ERROR: git pull failed (exit %d)\n", pull_rc);
         return 1;
     }
 
-    // Capture post-pull HEAD
+    /* Capture post-pull HEAD */
     char post_head[128] = "";
-    fp = popen("git rev-parse HEAD 2>/dev/null", "r");
-    if (fp) {
-        if (fgets(post_head, sizeof(post_head), fp)) {
-            char *nl = strchr(post_head, '\n');
-            if (*nl) *nl = '\0';
-        }
-        pclose(fp);
+    run_capture((char *[]){"git", "rev-parse", "HEAD", NULL},
+                post_head, sizeof(post_head));
+    if (post_head[0]) {
+        char *nl = strchr(post_head, '\n');
+        if (nl) *nl = '\0';
     }
 
-    // Write diff to stdout
+    /* Write diff to stdout */
     if (pre_head[0] && post_head[0] && strcmp(pre_head, post_head) != 0) {
-        char diff_cmd[512];
-        snprintf(diff_cmd, sizeof(diff_cmd),
-                 "git diff --name-only %s %s 2>/dev/null", pre_head, post_head);
-        fp = popen(diff_cmd, "r");
-        if (fp) {
-            char line[4096];
-            while (fgets(line, sizeof(line), fp)) {
-                fputs(line, stdout);
-            }
-            pclose(fp);
+        char *diff_argv[] = {
+            "git", "diff", "--name-only", pre_head, post_head, NULL
+        };
+        char diff_buf[8192];
+        int diff_rc = run_capture(diff_argv, diff_buf, sizeof(diff_buf));
+        if (diff_rc == 0 && diff_buf[0]) {
+            fputs(diff_buf, stdout);
+            if (diff_buf[strlen(diff_buf) - 1] != '\n')
+                putchar('\n');
         }
     } else {
         printf("(no changes)\n");
     }
 
-    // Restart services as root
+    /* Restart services as root */
     for (int i = 0; i < svc_count; i++) {
-        char cmd[256];
-        snprintf(cmd, sizeof(cmd), "systemctl restart %s 2>&1", svc_list[i]);
-        int rc = system(cmd);
-        rc = WEXITSTATUS(rc);
+        int rc = run((char *[]){"systemctl", "restart", svc_list[i], NULL});
         printf("restarted %s (exit %d)\n", svc_list[i], rc);
     }
 
-    // Read new version
+    /* Read new version from /etc/gateway-version */
     char version[256] = "unknown";
-    fp = fopen("/etc/gateway-version", "r");
+    FILE *fp = fopen("/etc/gateway-version", "r");
     if (fp) {
         if (fgets(version, sizeof(version), fp)) {
             char *nl = strchr(version, '\n');
