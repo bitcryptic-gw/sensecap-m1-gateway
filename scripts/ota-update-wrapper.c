@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
         setuid(repo_owner);
         setgid(0);
 
-        int fetch_rc = run((char *[]){"git", "fetch", "origin", NULL});
+        int fetch_rc = run((char *[]){"/usr/bin/git", "fetch", "origin", NULL});
         if (fetch_rc != 0) {
             fprintf(stderr, "ERROR: git fetch origin failed (exit %d)\n", fetch_rc);
             return 1;
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
 
         char diff_buf[65536];
         int diff_rc = run_capture(
-            (char *[]){"git", "diff", "--name-only", "HEAD..origin/main", NULL},
+            (char *[]){"/usr/bin/git", "diff", "--name-only", "HEAD..origin/main", NULL},
             diff_buf, sizeof(diff_buf));
         if (diff_rc != 0) {
             fprintf(stderr, "ERROR: git diff failed (exit %d)\n", diff_rc);
@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
 
     /* Capture pre-pull HEAD */
     char pre_head[128] = "";
-    run_capture((char *[]){"git", "rev-parse", "HEAD", NULL},
+    run_capture((char *[]){"/usr/bin/git", "rev-parse", "HEAD", NULL},
                 pre_head, sizeof(pre_head));
     if (pre_head[0]) {
         char *nl = strchr(pre_head, '\n');
@@ -174,7 +174,7 @@ int main(int argc, char *argv[]) {
     setuid(repo_owner);
     setgid(0);
 
-    int pull_rc = run((char *[]){"git", "pull", NULL});
+    int pull_rc = run((char *[]){"/usr/bin/git", "pull", NULL});
 
     /* Become root again */
     setuid(0);
@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
 
     /* Capture post-pull HEAD */
     char post_head[128] = "";
-    run_capture((char *[]){"git", "rev-parse", "HEAD", NULL},
+    run_capture((char *[]){"/usr/bin/git", "rev-parse", "HEAD", NULL},
                 post_head, sizeof(post_head));
     if (post_head[0]) {
         char *nl = strchr(post_head, '\n');
@@ -197,7 +197,7 @@ int main(int argc, char *argv[]) {
     /* Write diff to stdout */
     if (pre_head[0] && post_head[0] && strcmp(pre_head, post_head) != 0) {
         char *diff_argv[] = {
-            "git", "diff", "--name-only", pre_head, post_head, NULL
+            "/usr/bin/git", "diff", "--name-only", pre_head, post_head, NULL
         };
         char diff_buf[8192];
         int diff_rc = run_capture(diff_argv, diff_buf, sizeof(diff_buf));
@@ -212,7 +212,7 @@ int main(int argc, char *argv[]) {
 
     /* Restart services as root */
     for (int i = 0; i < svc_count; i++) {
-        int rc = run((char *[]){"systemctl", "restart", svc_list[i], NULL});
+        int rc = run((char *[]){"/usr/bin/systemctl", "restart", svc_list[i], NULL});
         printf("restarted %s (exit %d)\n", svc_list[i], rc);
     }
 
