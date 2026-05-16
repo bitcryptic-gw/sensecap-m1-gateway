@@ -27,6 +27,8 @@
     <div class="header-brand">
       <span class="brand-name">SenseCap M1</span>
       <span id="header-name" class="brand-sub"></span>
+      <span id="header-version" class="brand-sub" style="display:none"></span>
+      <span id="header-update-badge" class="update-badge hidden" role="button" tabindex="0">⬆ Update available</span>
     </div>
     <nav class="tab-nav" role="tablist">
       <button class="tab-btn active" data-tab="dashboard"    role="tab">Dashboard</button>
@@ -294,6 +296,45 @@
     <!-- ── Settings ────────────────────────────────────────────── -->
     <section id="tab-settings" class="tab-panel hidden" role="tabpanel">
       <div class="settings-grid">
+
+        <div class="card" id="ota-card">
+          <div class="card-header">Updates</div>
+          <div class="card-body" id="ota-body">
+            <div id="ota-status">
+              <div class="kv-row">
+                <span class="kv-label">Version</span>
+                <span id="ota-local-ver" class="kv-value dim">—</span>
+              </div>
+              <div class="action-row">
+                <button id="btn-ota-check" class="btn btn-sm">Check for updates</button>
+                <span id="ota-check-result" class="result-msg"></span>
+              </div>
+            </div>
+            <div id="ota-update-available" class="hidden">
+              <div class="kv-row">
+                <span class="kv-label">Version</span>
+                <span id="ota-version-compare" class="kv-value">—</span>
+              </div>
+              <div id="ota-release-notes-wrap" class="hidden">
+                <button id="btn-ota-toggle-notes" class="btn btn-sm">Show release notes</button>
+                <pre id="ota-release-notes" class="ota-notes hidden"></pre>
+              </div>
+              <div class="ota-section-divider"></div>
+              <p class="field-label">Services to restart</p>
+              <div id="ota-service-checks" class="ota-checks"></div>
+              <div id="ota-boot-note" class="ota-boot-note hidden"></div>
+              <div class="action-row">
+                <button id="btn-ota-update" class="btn btn-amber" disabled>Confirm Update</button>
+                <span id="ota-update-result" class="result-msg"></span>
+              </div>
+              <pre id="ota-output" class="ota-output hidden"></pre>
+              <div id="ota-reload-msg" class="ota-reload-msg hidden">
+                Connection lost — gateway-ui is restarting.<br>
+                Reloading in <span id="ota-countdown">5</span> seconds…
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div class="card">
           <div class="card-header">Authentication</div>

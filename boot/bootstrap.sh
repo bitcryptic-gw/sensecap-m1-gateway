@@ -67,7 +67,8 @@ apt-get install -y -qq --no-install-recommends \
     i2c-tools \
     jq \
     curl \
-    docker.io
+    docker.io \
+    locales-all
 
 info "Adding ${PRIMARY_USER} to docker group..."
 usermod -aG docker "$PRIMARY_USER"
@@ -154,7 +155,30 @@ else
     warn "install-wingbits-deps.sh not found or not executable — skipping"
 fi
 
-# ── 7. Post-provisioning summary ─────────────────────────────────────────────
+# ── 7. Gateway version ──────────────────────────────────────────────────────
+
+echo ""
+echo "--- Gateway Version ---"
+VERSION_TAG=$(git -C "${REPO_DIR}" describe --tags --always 2>/dev/null || echo "dev")
+echo "${VERSION_TAG}" > /etc/gateway-version
+chmod 644 /etc/gateway-version
+green "Wrote /etc/gateway-version: ${VERSION_TAG}"
+
+# ── 8. OTA update wrapper ───────────────────────────────────────────────────
+
+echo ""
+echo "--- OTA Update Wrapper ---"
+if command -v gcc &>/dev/null; then
+    gcc -O2 -Wall -o /usr/local/bin/ota-update-wrapper \
+        "${REPO_DIR}/scripts/ota-update-wrapper.c"
+    chown root:root /usr/local/bin/ota-update-wrapper
+    chmod 4755 /usr/local/bin/ota-update-wrapper
+    green "ota-update-wrapper installed (setuid root)"
+else
+    warn "gcc not found — ota-update-wrapper omitted (install build-essential and re-run)"
+fi
+
+# ── 9. Post-provisioning summary ─────────────────────────────────────────────
 
 echo ""
 echo "============================================"

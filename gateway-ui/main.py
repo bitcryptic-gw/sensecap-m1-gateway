@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import uvicorn
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -23,6 +24,19 @@ GW_CONFIG_DIR = Path("/opt/gateway/config")
 GW_ENV        = Path("/opt/gateway/config.env")
 STATIC_DIR    = Path(__file__).parent / "static"
 GW_RELEASE    = Path("/etc/gateway-release")
+GW_VERSION    = Path("/etc/gateway-version")
+
+SERVICE_GROUPS = {
+    "helium":    {"label": "Helium",    "units": ["pktfwd.service", "gateway-rs.service"]},
+    "wingbits":  {"label": "Wingbits",  "units": ["readsb.service", "wingbits.service"]},
+    "tailscale": {"label": "Tailscale", "units": ["tailscaled.service"]},
+    "web-ui":    {"label": "Web UI",    "units": ["gateway-ui.service"]},
+}
+
+ALLOWED_OTA_UNITS = [
+    "pktfwd.service", "gateway-rs.service", "gateway-ui.service",
+    "readsb.service", "wingbits.service", "tailscaled.service",
+]
 
 HELIUM_GW     = "/usr/local/bin/helium_gateway"
 HELIUM_CONF   = "/etc/helium_gateway/settings.toml"
@@ -32,6 +46,7 @@ _SYSTEMCTL    = "/bin/systemctl"
 _APPLY_BAND   = "/opt/gateway/scripts/apply-band.sh"
 _TAILSCALE    = "/usr/bin/tailscale"
 _TS_WRAPPER   = "/usr/local/bin/tailscale-wrapper"
+_OTA_WRAPPER  = "/usr/local/bin/ota-update-wrapper"
 _SYSCTL_W     = "/usr/sbin/sysctl"
 
 BAND_RE = re.compile(r"^[a-z][a-z0-9_]{1,30}$")
@@ -169,6 +184,25 @@ def _service_info(unit: str) -> dict:
     return {"unit": unit, "state": state, "since": ts_out.strip()}
 
 
+def _service_group_status(group_key: str) -> dict:
+    g = SERVICE_GROUPS.get(group_key)
+    if not g:
+        return {"label": group_key, "active": 0, "total": 0, "units": []}
+    units = []
+    active_count = 0
+    for u in g["units"]:
+        info = _service_info(u) if _service_installed(u) else {"unit": u, "state": "not-installed", "since": ""}
+        if info["state"] == "active":
+            active_count += 1
+        units.append(info)
+    return {
+        "label": g["label"],
+        "active": active_count,
+        "total": len(g["units"]),
+        "units": units,
+    }
+
+
 def _service_installed(unit: str) -> bool:
     rc, _, _ = _run(["systemctl", "cat", unit])
     return rc == 0
@@ -232,6 +266,14 @@ def api_status(_: Auth):
         else:
             result[s] = {"unit": unit, "state": "not-installed", "since": ""}
     return result
+
+
+@app.get("/api/status/groups")
+def api_status_groups(_: Auth):
+    return {
+        key: _service_group_status(key)
+        for key in SERVICE_GROUPS
+    }
 
 
 @app.get("/api/sysinfo")
@@ -588,6 +630,194 @@ async def api_tailscale_ssh(_: Auth, request: Request):
         raise HTTPException(status_code=500, detail=err or out or "tailscale ssh failed")
 
     return {"ok": True, "output": out}
+
+
+# ── System / Version ──────────────────────────────────────────────────────────
+
+GITHUB_API = "https://api.github.com/repos/bitcryptic-gw/sensecap-m1-gateway/releases/latest"
+
+
+@app.get("/api/system/version")
+async def api_system_version(_: Auth):
+    local = "unknown"
+    if GW_VERSION.exists():
+        local = GW_VERSION.read_text().strip() or "unknown"
+
+    result = {
+        "local": local,
+        "latest": None,
+        "update_available": False,
+        "release_url": None,
+        "release_notes": None,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(GITHUB_API)
+            if r.status_code == 200:
+                data = r.json()
+                tag = data.get("tag_name", "")
+                latest_ver = tag.lstrip("v") if tag else ""
+                if latest_ver:
+                    result["latest"] = tag
+                    result["release_url"] = data.get("html_url")
+                    result["release_notes"] = data.get("body", "")[:5000]  # plain text, truncated
+                    if local and local != "unknown":
+                        # Compare date-based versions: YYYY.MM.DD
+                        result["update_available"] = latest_ver > local
+    except Exception:
+        pass  # silent failure — return null fields
+
+    return result
+
+
+# ── System / OTA ──────────────────────────────────────────────────────────────
+
+OTA_CHANGE_MAP = [
+    ("gateway-ui/",              "Web UI",   ["gateway-ui.service"]),
+    ("pktfwd/",                  "Helium",   ["pktfwd.service"]),
+    ("config/global_conf.",      "Helium",   ["pktfwd.service"]),
+    ("config/settings.toml",     "Helium",   ["gateway-rs.service"]),
+    ("systemd/gateway-rs",       "Helium",   ["gateway-rs.service"]),
+    ("systemd/pktfwd",           "Helium",   ["pktfwd.service"]),
+    ("scripts/wingbits",         "Wingbits", ["readsb.service", "wingbits.service"]),
+    ("systemd/readsb",           "Wingbits", ["readsb.service"]),
+    ("systemd/wingbits",         "Wingbits", ["wingbits.service"]),
+    ("systemd/tailscale",        "Tailscale", ["tailscaled.service"]),
+    ("scripts/tailscale",        "Tailscale", ["tailscaled.service"]),
+    ("scripts/install-tailscale","Tailscale", ["tailscaled.service"]),
+    ("scripts/ota-update",       "Web UI",   ["gateway-ui.service"]),
+]
+
+
+def _map_changed_files(changed: list[str]) -> tuple[list[dict], list[str]]:
+    groups: dict[str, dict] = {}
+    boot_changes = []
+
+    for f in changed:
+        if f.startswith("boot/"):
+            boot_changes.append(f)
+            continue
+
+        matched = False
+        for prefix, label, services in OTA_CHANGE_MAP:
+            if f.startswith(prefix):
+                if label not in groups:
+                    groups[label] = {"label": label, "services": services, "changed_files": []}
+                groups[label]["changed_files"].append(f)
+                matched = True
+                break
+
+        if not matched:
+            # Default to Web UI
+            if "Web UI" not in groups:
+                groups["Web UI"] = {"label": "Web UI", "services": ["gateway-ui.service"], "changed_files": []}
+            groups["Web UI"]["changed_files"].append(f)
+
+    return list(groups.values()), boot_changes
+
+
+def _current_version() -> str:
+    if GW_VERSION.exists():
+        return GW_VERSION.read_text().strip() or "unknown"
+    return "unknown"
+
+
+@app.get("/api/system/ota/changes")
+async def api_system_ota_changes(_: Auth):
+    # git fetch as gateway-ui user
+    rc, out, err = await _run_async(
+        ["git", "-C", "/opt/gateway", "fetch", "origin"], timeout=30
+    )
+    if rc != 0:
+        raise HTTPException(status_code=503, detail=err or out or "git fetch failed — no network?")
+
+    rc2, diff_out, _ = _run(
+        ["git", "-C", "/opt/gateway", "diff", "--name-only", "HEAD..origin/main"], timeout=15
+    )
+    changed = [f.strip() for f in diff_out.splitlines() if f.strip()] if rc2 == 0 else []
+
+    affected_groups, boot_changes = _map_changed_files(changed)
+    latest_ver = _current_version()
+    # Try to get latest from GitHub
+    latest_tag = "unknown"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(GITHUB_API)
+            if r.status_code == 200:
+                latest_tag = r.json().get("tag_name", "unknown")
+    except Exception:
+        pass
+
+    return {
+        "affected_groups": affected_groups,
+        "boot_changes": boot_changes,
+        "current_version": latest_ver,
+        "latest_version": latest_tag,
+    }
+
+
+_ota_running = False
+
+
+@app.post("/api/system/ota/update")
+async def api_system_ota_update(_: Auth, request: Request):
+    global _ota_running
+
+    body = await request.json()
+    raw = body.get("services", [])
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(status_code=400, detail="services must be a non-empty list")
+
+    services = [str(s).strip() for s in raw]
+    for s in services:
+        if s not in ALLOWED_OTA_UNITS:
+            raise HTTPException(status_code=400, detail=f"Invalid service: {s}")
+
+    if not Path(_OTA_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="ota-update-wrapper not installed")
+
+    if _ota_running:
+        raise HTTPException(status_code=409, detail="Update already in progress")
+
+    _ota_running = True
+
+    svc_arg = ",".join(services)
+
+    async def event_stream():
+        global _ota_running
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                _OTA_WRAPPER, svc_arg,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            version = None
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace").rstrip()
+                if decoded.startswith("VERSION:"):
+                    version = decoded[len("VERSION:"):]
+                yield f"data: {decoded}\n\n"
+            exit_code = await proc.wait()
+            event = {"exit_code": exit_code}
+            if version:
+                event["version"] = version
+            yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            _ota_running = False
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── Logs ─────────────────────────────────────────────────────────────────────

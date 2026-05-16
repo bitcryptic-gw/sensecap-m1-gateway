@@ -3,13 +3,17 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  token:          null,
-  logLines:       [],
-  logInterval:    null,
-  dashInterval:   null,
+  token:           null,
+  logLines:        [],
+  logInterval:     null,
+  dashInterval:    null,
   netInterval:    null,
-  tokenRevealed:  false,
-  wingbitsAbort:  null,
+  verInterval:     null,
+  tokenRevealed:   false,
+  wingbitsAbort:   null,
+  otaChanges:      null,
+  otaAbort:        null,
+  otaCountdown:    null,
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -117,24 +121,31 @@ function startDashboardRefresh() {
 }
 
 async function loadDashboard() {
-  const [status, sysinfo] = await Promise.allSettled([
+  const [status, sysinfo, groups] = await Promise.allSettled([
     api('/api/status'),
     api('/api/sysinfo'),
+    api('/api/status/groups'),
   ]);
-  if (status.status  === 'fulfilled') renderDashServices(status.value);
+  if (groups.status  === 'fulfilled') renderDashServices(groups.value);
   if (sysinfo.status === 'fulfilled') renderSysinfo(sysinfo.value, true);
 }
 
 function renderDashServices(d) {
-  const services = ['pktfwd', 'gateway-rs', 'readsb', 'wingbits', 'tailscaled'];
+  const groupOrder = ['helium', 'wingbits', 'tailscale', 'web-ui'];
+  const labels = { helium: 'Helium', wingbits: 'Wingbits', tailscale: 'Tailscale', 'web-ui': 'Web UI' };
   const el = document.getElementById('dash-services-body');
-  el.innerHTML = services.map(name => {
-    const s = d[name] || { state: 'not-installed' };
+  el.innerHTML = groupOrder.map(key => {
+    const g = d[key] || { active: 0, total: 0, units: [] };
     let cls, dot;
-    if (s.state === 'active') { cls = 'badge-green'; dot = '●'; }
-    else if (s.state === 'not-installed') { cls = 'badge-dim'; dot = '○'; }
-    else { cls = 'badge-yellow'; dot = '●'; }
-    return `<span class="service-dot ${cls}">${dot} ${name}</span>`;
+    if (g.active === g.total && g.total > 0) { cls = 'badge-green'; dot = '●'; }
+    else if (g.active > 0) { cls = 'badge-yellow'; dot = '●'; }
+    else { cls = 'badge-dim'; dot = g.total === 0 ? '○' : '●'; }
+    const label = labels[key] || key;
+    const detail = (g.units || []).map(u =>
+      `<span class="service-dot-detail">${u.state === 'active' ? '●' : '○'} ${u.unit.replace('.service', '')}</span>`
+    ).join(' ');
+    return `<span class="service-dot ${cls}" title="${label}: ${g.active}/${g.total} active">${dot} ${label}</span>
+      <span class="service-dot-sub">${detail}</span>`;
   }).join('');
 }
 
@@ -630,6 +641,182 @@ async function applyTailscaleSsh(enabled) {
   }
 }
 
+// ── Settings — OTA Updates ──────────────────────────────────────────────────
+
+async function loadOtaStatus() {
+  try {
+    const d = await api('/api/system/version');
+    const localEl = document.getElementById('ota-local-ver');
+    if (d.local && d.local !== 'unknown') {
+      localEl.textContent = d.local;
+      localEl.className = 'kv-value';
+    } else {
+      localEl.textContent = 'Unknown';
+      localEl.className = 'kv-value dim';
+    }
+    if (d.update_available) {
+      document.getElementById('ota-status').classList.add('hidden');
+      document.getElementById('ota-update-available').classList.remove('hidden');
+      document.getElementById('ota-version-compare').innerHTML =
+        `<span class="dim">${d.local}</span> <span style="color:var(--text-dim)">→</span> ` +
+        `<a href="${d.release_url || '#'}" target="_blank" rel="noopener" style="color:var(--cyan)">${d.latest}</a>`;
+      const notesWrap = document.getElementById('ota-release-notes-wrap');
+      if (d.release_notes) {
+        notesWrap.classList.remove('hidden');
+        document.getElementById('ota-release-notes').textContent = d.release_notes;
+      } else {
+        notesWrap.classList.add('hidden');
+      }
+      // Fetch changes for the checkboxes
+      await checkOtaChanges();
+    } else {
+      document.getElementById('ota-status').classList.remove('hidden');
+      document.getElementById('ota-update-available').classList.add('hidden');
+      if (d.latest) {
+        showResult('ota-check-result', `Latest: ${d.latest} — up to date`, false);
+      }
+    }
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('ota-check-result', e.message, true);
+  }
+}
+
+async function checkOtaChanges() {
+  try {
+    const d = await api('/api/system/ota/changes');
+    state.otaChanges = d;
+    const checksEl = document.getElementById('ota-service-checks');
+    if (d.affected_groups && d.affected_groups.length > 0) {
+      checksEl.innerHTML = d.affected_groups.map(g =>
+        `<label class="ota-check-row">
+          <input type="checkbox" class="ota-svc-check" checked
+            data-services="${g.services.join(',')}">
+          <span>${g.label} (${g.services.map(s => s.replace('.service', '')).join(', ')})</span>
+        </label>`
+      ).join('');
+    } else {
+      checksEl.innerHTML = '<span class="dim">No services affected by this update.</span>';
+    }
+    const bootNote = document.getElementById('ota-boot-note');
+    if (d.boot_changes && d.boot_changes.length > 0) {
+      bootNote.textContent = 'Provisioning files changed (' + d.boot_changes.join(', ') + ') — requires manual re-run of bootstrap.sh.';
+      bootNote.classList.remove('hidden');
+    } else {
+      bootNote.classList.add('hidden');
+    }
+    updateOtaConfirmBtn();
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('ota-check-result', e.message, true);
+  }
+}
+
+function updateOtaConfirmBtn() {
+  const checks = document.querySelectorAll('.ota-svc-check:checked');
+  document.getElementById('btn-ota-update').disabled = checks.length === 0;
+}
+
+async function runOtaUpdate() {
+  const checks = document.querySelectorAll('.ota-svc-check:checked');
+  if (checks.length === 0) return;
+  const services = Array.from(checks).flatMap(cb => cb.dataset.services.split(','));
+  const btn = document.getElementById('btn-ota-update');
+  const output = document.getElementById('ota-output');
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  output.classList.remove('hidden');
+  output.textContent = '';
+  try {
+    const r = await fetch('/api/system/ota/update', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ services }),
+    });
+    if (r.status === 409) { output.textContent = 'Update already in progress.'; return; }
+    if (r.status === 503) { const err = await r.json(); output.textContent = 'Error: ' + err.detail; return; }
+    if (!r.ok) {
+      let detail = 'Request failed';
+      try { detail = (await r.json()).detail || detail; } catch {}
+      output.textContent = 'Error: ' + detail; return;
+    }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let exitCode = null;
+    let newVersion = null;
+    const reloadMsg = document.getElementById('ota-reload-msg');
+    const countdown = document.getElementById('ota-countdown');
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        for (const line of part.split('\n')) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            try {
+              const obj = JSON.parse(data);
+              if (obj.exit_code !== undefined) {
+                exitCode = obj.exit_code;
+                if (obj.version) newVersion = obj.version;
+                break;
+              }
+            } catch {
+              // Plain text line
+              output.textContent += data + '\n';
+              output.scrollTop = output.scrollHeight;
+            }
+          }
+        }
+        if (exitCode !== null) break;
+      }
+    }
+    if (exitCode === 0) {
+      if (services.some(s => s === 'gateway-ui.service')) {
+        // UI is restarting — show countdown
+        reloadMsg.classList.remove('hidden');
+        let sec = 5;
+        countdown.textContent = sec;
+        state.otaCountdown = setInterval(() => {
+          sec--;
+          countdown.textContent = sec;
+          if (sec <= 0) {
+            clearInterval(state.otaCountdown);
+            location.reload();
+          }
+        }, 1000);
+      } else {
+        output.textContent += '\n✓ Update completed successfully' + (newVersion ? ' (' + newVersion + ')' : '');
+      }
+    } else if (exitCode !== null) {
+      output.textContent += '\n✗ Update failed (exit ' + exitCode + ')';
+    }
+  } catch (e) {
+    if (e.name === 'TypeError' && e.message.includes('network')) {
+      // Connection dropped — UI restarting
+      const reloadMsg = document.getElementById('ota-reload-msg');
+      reloadMsg.classList.remove('hidden');
+      let sec = 5;
+      document.getElementById('ota-countdown').textContent = sec;
+      state.otaCountdown = setInterval(() => {
+        sec--;
+        document.getElementById('ota-countdown').textContent = sec;
+        if (sec <= 0) {
+          clearInterval(state.otaCountdown);
+          location.reload();
+        }
+      }, 1000);
+    }
+  } finally {
+    if (!services.some(s => s === 'gateway-ui.service')) {
+      btn.disabled = false;
+      btn.textContent = 'Confirm Update';
+    }
+  }
+}
+
+
 // ── Logs ─────────────────────────────────────────────────────────────────────
 
 function startLogAutoRefresh() {
@@ -670,6 +857,7 @@ async function loadSettings() {
     const s = await api('/api/settings');
     document.getElementById('port-input').value = s.port;
   } catch (e) {}
+  loadOtaStatus();
 }
 
 async function savePort() {
@@ -725,15 +913,38 @@ async function copyToken() {
   }
 }
 
-// ── Hostname (fetched once on init) ─────────────────────────────────────────
+// ── Header (hostname + version + update badge) ─────────────────────────────
 
-async function setHostname() {
+async function setHeaderInfo() {
   try {
-    const d = await api('/api/sysinfo');
-    if (d.hostname) {
-      document.getElementById('header-name').textContent = d.hostname;
+    const [sys, ver] = await Promise.allSettled([
+      api('/api/sysinfo'),
+      api('/api/system/version'),
+    ]);
+    const headerName = document.getElementById('header-name');
+    if (sys.status === 'fulfilled' && sys.value.hostname) {
+      headerName.textContent = sys.value.hostname;
+    }
+    const headerVer = document.getElementById('header-version');
+    const badge = document.getElementById('header-update-badge');
+    if (ver.status === 'fulfilled' && ver.value.local && ver.value.local !== 'unknown') {
+      headerVer.textContent = ver.value.local;
+      headerVer.style.display = '';
+      if (ver.value.update_available) {
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    } else {
+      headerVer.style.display = 'none';
+      badge.classList.add('hidden');
     }
   } catch {}
+}
+
+async function startVersionPoll() {
+  await setHeaderInfo();
+  state.verInterval = setInterval(setHeaderInfo, 60_000);
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -860,6 +1071,22 @@ function wireEvents() {
     });
   });
 
+  // Settings — OTA
+  document.getElementById('btn-ota-check').addEventListener('click', loadOtaStatus);
+  document.getElementById('btn-ota-toggle-notes').addEventListener('click', function() {
+    const notes = document.getElementById('ota-release-notes');
+    notes.classList.toggle('hidden');
+    this.textContent = notes.classList.contains('hidden') ? 'Show release notes' : 'Hide release notes';
+  });
+  document.getElementById('ota-service-checks').addEventListener('change', updateOtaConfirmBtn);
+  document.getElementById('btn-ota-update').addEventListener('click', runOtaUpdate);
+
+  // Header update badge — click navigates to Settings tab, triggers OTA load
+  document.getElementById('header-update-badge').addEventListener('click', function() {
+    switchTab('settings');
+    // OTA section should already be visible via loadSettings -> loadOtaStatus
+  });
+
   // Settings — auth
   document.getElementById('btn-reveal-token').addEventListener('click', revealToken);
   document.getElementById('btn-regen-token').addEventListener('click', regenToken);
@@ -885,14 +1112,14 @@ async function init() {
   try {
     await api('/api/identity');
     hideModal();
-    await setHostname();
+    startVersionPoll();
     initApp();
   } catch (e) {
     if (e.message === 'unauthorized') {
       showModal(false);
     } else {
       hideModal();
-      await setHostname();
+      startVersionPoll();
       initApp();
     }
   }
