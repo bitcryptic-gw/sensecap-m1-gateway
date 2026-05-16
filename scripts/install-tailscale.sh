@@ -50,6 +50,13 @@ chown root:root /usr/local/bin/tailscale-wrapper
 chmod 4755 /usr/local/bin/tailscale-wrapper
 echo "[OK] tailscale-wrapper installed (setuid root)"
 
+# Set operator so gateway-ui wrapper can modify Tailscale prefs without sudo
+echo "[..] Setting tailscale operator to gateway-ui..."
+/usr/bin/tailscale set --operator=gateway-ui 2>/dev/null || {
+    echo "[WARN] Could not set operator — Tailscale may not yet be authenticated."
+    echo "[NOTE] After running 'tailscale up', re-run: sudo tailscale set --operator=gateway-ui"
+}
+
 echo ""
 echo "=== Next Step ==="
 echo "Open the Gateway UI Network tab to authenticate with an auth key."

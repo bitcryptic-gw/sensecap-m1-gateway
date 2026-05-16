@@ -111,6 +111,33 @@ def index():
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+async def _run_async(cmd: list[str], timeout: int = 10) -> tuple[int, str, str]:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout
+        )
+        rc = proc.returncode
+        return (rc if rc is not None else -1,
+                stdout.decode(errors="replace"),
+                stderr.decode(errors="replace"))
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+            await proc.wait()
+        except Exception:
+            pass
+        return -1, "", "timeout"
+    except FileNotFoundError:
+        return -1, "", f"not found: {cmd[0]}"
+    except Exception as exc:
+        return -1, "", str(exc)
+
+
 def _run(cmd: list[str], timeout: int = 10) -> tuple[int, str, str]:
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, shell=False)
@@ -456,12 +483,6 @@ def api_network_tailscale(_: Auth):
     ip = ips[0] if ips else ""
     hostname = self_info.get("DNSName", "").rstrip(".")
 
-    # Check IP forwarding
-    ip_forwarding = "disabled"
-    rc2, fwd_out, _ = _run(["cat", "/proc/sys/net/ipv4/ip_forward"])
-    if rc2 == 0 and fwd_out.strip() == "1":
-        ip_forwarding = "enabled"
-
     # Check advertised routes and SSH from debug prefs
     advertised = []
     ssh_enabled = False
@@ -478,6 +499,12 @@ def api_network_tailscale(_: Auth):
         except (json.JSONDecodeError, AttributeError):
             pass
 
+    # Version
+    version = "unknown"
+    rc4, ver_out, _ = _run([_TAILSCALE, "version", "--short"])
+    if rc4 == 0:
+        version = ver_out.strip() or "unknown"
+
     return {
         "status": "connected",
         "connected": True,
@@ -485,7 +512,8 @@ def api_network_tailscale(_: Auth):
         "ip": ip,
         "ips": ips,
         "hostname": hostname,
-        "ip_forwarding": ip_forwarding,
+        "version": version,
+        "subnet_routing_enabled": bool(advertised),
         "advertised_routes": advertised,
         "ssh_enabled": ssh_enabled,
     }
@@ -505,7 +533,7 @@ async def api_tailscale_connect(_: Auth, request: Request):
     if not Path(_TS_WRAPPER).exists():
         raise HTTPException(status_code=503, detail="tailscale-wrapper not installed — run install-tailscale.sh")
 
-    rc, out, err = _run([_TS_WRAPPER, "auth", key], timeout=30)
+    rc, out, err = await _run_async([_TS_WRAPPER, "auth", key], timeout=30)
 
     # Scrub key from any output
     out_clean = out.replace(key, "[REDACTED]")
@@ -531,7 +559,7 @@ async def api_tailscale_routes(_: Auth, request: Request):
             if not CIDR_RE.match(p):
                 raise HTTPException(status_code=400, detail=f"Invalid CIDR: {p}")
 
-    rc, out, err = _run([_TS_WRAPPER, "set-routes", subnets_str], timeout=30)
+    rc, out, err = await _run_async([_TS_WRAPPER, "set-routes", subnets_str], timeout=30)
 
     if rc != 0:
         raise HTTPException(status_code=500, detail=err or out or "tailscale routes failed")
@@ -554,7 +582,7 @@ async def api_tailscale_ssh(_: Auth, request: Request):
         raise HTTPException(status_code=503, detail="tailscale-wrapper not installed — run install-tailscale.sh")
 
     val = "on" if enabled else "off"
-    rc, out, err = _run([_TS_WRAPPER, "set-ssh", val], timeout=30)
+    rc, out, err = await _run_async([_TS_WRAPPER, "set-ssh", val], timeout=30)
 
     if rc != 0:
         raise HTTPException(status_code=500, detail=err or out or "tailscale ssh failed")

@@ -507,7 +507,9 @@ function renderTailscaleInterface(d) {
     ['Status', onlineLabel],
     ['Tailscale IP', d.ip ? `<code>${d.ip}</code>` : '<span class="dim">—</span>'],
     ['Hostname', d.hostname || '<span class="dim">—</span>'],
-    ['IP forwarding', d.ip_forwarding === 'enabled' ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-dim">Disabled</span>'],
+    ['Version', d.version ? `<code>${d.version}</code>` : '<span class="dim">—</span>'],
+    ['Subnet Routing', d.subnet_routing_enabled ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-dim">Disabled</span>'],
+    ['Tailscale SSH', d.ssh_enabled ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-dim">Disabled</span>'],
   ]);
 }
 
@@ -523,27 +525,32 @@ function renderTailscaleOptions(d) {
 
   const connected = d.status === 'connected' && d.online;
 
+  optionsCard.classList.toggle('card-disabled', !connected);
+  routingToggle.disabled = !connected;
+  sshToggle.disabled = !connected;
+
   if (!connected) {
-    optionsCard.classList.add('card-disabled');
-    routingToggle.disabled = true;
-    sshToggle.disabled = true;
     subnetsInput.disabled = true;
     applyBtn.disabled = true;
     return;
   }
 
-  optionsCard.classList.remove('card-disabled');
-  routingToggle.disabled = false;
-  sshToggle.disabled = false;
-
+  // Only update toggle state from backend if UI hasn't been touched by the user.
+  // Compare current backend state vs current UI state — if they differ, the user
+  // hasn't interacted yet or the backend was changed externally (clobber).
   const hasRoutes = d.advertised_routes && d.advertised_routes.length > 0;
-  routingToggle.checked = hasRoutes;
-  subnetsInput.value = hasRoutes ? d.advertised_routes.join(', ') : '';
-  routingFields.classList.toggle('hidden', !hasRoutes);
-  subnetsInput.disabled = !hasRoutes;
-  applyBtn.disabled = !hasRoutes;
 
-  sshToggle.checked = d.ssh_enabled;
+  if (routingToggle.checked !== hasRoutes) {
+    routingToggle.checked = hasRoutes;
+    subnetsInput.value = hasRoutes ? d.advertised_routes.join(', ') : '';
+    routingFields.classList.toggle('hidden', !hasRoutes);
+    subnetsInput.disabled = !hasRoutes;
+    applyBtn.disabled = !hasRoutes;
+  }
+
+  if (sshToggle.checked !== d.ssh_enabled) {
+    sshToggle.checked = d.ssh_enabled;
+  }
 }
 
 // ── Network — Tailscale Auth ─────────────────────────────────────────────────
