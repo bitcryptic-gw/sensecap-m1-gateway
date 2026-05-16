@@ -495,15 +495,15 @@ def api_network_tailscale(_: Auth):
                 advertised = [str(r) for r in raw]
             elif isinstance(raw, str) and raw:
                 advertised = [raw]
-            ssh_enabled = bool(prefs.get("SSHEnabled", False))
+            ssh_enabled = bool(prefs.get("RunSSH", False))
         except (json.JSONDecodeError, AttributeError):
             pass
 
-    # Version
+    # Version — parse first line of `tailscale version`
     version = "unknown"
-    rc4, ver_out, _ = _run([_TAILSCALE, "version", "--short"])
+    rc4, ver_out, _ = _run([_TAILSCALE, "version"])
     if rc4 == 0:
-        version = ver_out.strip() or "unknown"
+        version = ver_out.splitlines()[0].strip() if ver_out.strip() else "unknown"
 
     return {
         "status": "connected",
