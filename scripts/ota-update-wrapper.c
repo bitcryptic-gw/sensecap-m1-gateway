@@ -80,10 +80,57 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (argc != 2) {
-        fprintf(stderr, "ERROR: usage: ota-update-wrapper <service1,service2,...>\n");
+    if (argc < 2) {
+        fprintf(stderr, "ERROR: usage: ota-update-wrapper --changes | <service1,service2,...>\n");
         return 1;
     }
+
+    /* Become root for filesystem ops */
+    setgroups(0, NULL);
+    setgid(0);
+    setuid(0);
+
+    /* Determine repo owner from /opt/gateway directory stat */
+    struct stat st;
+    if (stat(REPO_DIR, &st) != 0) {
+        fprintf(stderr, "ERROR: cannot stat %s: %s\n", REPO_DIR, strerror(errno));
+        return 1;
+    }
+    uid_t repo_owner = st.st_uid;
+
+    /* chdir to repo */
+    if (chdir(REPO_DIR) != 0) {
+        fprintf(stderr, "ERROR: cannot chdir to %s: %s\n", REPO_DIR, strerror(errno));
+        return 1;
+    }
+
+    /* ── --changes mode ─────────────────────────────────────────────────────── */
+    if (strcmp(argv[1], "--changes") == 0) {
+        /* git operations as repo owner */
+        setuid(repo_owner);
+        setgid(0);
+
+        int fetch_rc = run((char *[]){"git", "fetch", "origin", NULL});
+        if (fetch_rc != 0) {
+            fprintf(stderr, "ERROR: git fetch origin failed (exit %d)\n", fetch_rc);
+            return 1;
+        }
+
+        char diff_buf[65536];
+        int diff_rc = run_capture(
+            (char *[]){"git", "diff", "--name-only", "HEAD..origin/main", NULL},
+            diff_buf, sizeof(diff_buf));
+        if (diff_rc != 0) {
+            fprintf(stderr, "ERROR: git diff failed (exit %d)\n", diff_rc);
+            return 1;
+        }
+        printf("%s", diff_buf);
+        if (diff_buf[0] && diff_buf[strlen(diff_buf) - 1] != '\n')
+            putchar('\n');
+        return 0;
+    }
+
+    /* ── Update mode (default) ──────────────────────────────────────────────── */
 
     /* Parse and validate service list */
     char svc_buf[1024];
@@ -108,25 +155,6 @@ int main(int argc, char *argv[]) {
 
     if (svc_count == 0) {
         fprintf(stderr, "ERROR: at least one service required\n");
-        return 1;
-    }
-
-    /* Become root for filesystem ops */
-    setgroups(0, NULL);
-    setgid(0);
-    setuid(0);
-
-    /* Determine repo owner from /opt/gateway directory stat */
-    struct stat st;
-    if (stat(REPO_DIR, &st) != 0) {
-        fprintf(stderr, "ERROR: cannot stat %s: %s\n", REPO_DIR, strerror(errno));
-        return 1;
-    }
-    uid_t repo_owner = st.st_uid;
-
-    /* chdir to repo */
-    if (chdir(REPO_DIR) != 0) {
-        fprintf(stderr, "ERROR: cannot chdir to %s: %s\n", REPO_DIR, strerror(errno));
         return 1;
     }
 

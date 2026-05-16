@@ -92,6 +92,10 @@ else
     green "Repo cloned at ${REPO_DIR}"
 fi
 
+# Mark repo as safe for all users (avoids dubious-ownership errors)
+git config --system --add safe.directory /opt/gateway
+green "Git safe.directory set for /opt/gateway"
+
 # ── 3. boot/config.txt ───────────────────────────────────────────────────────
 
 echo ""

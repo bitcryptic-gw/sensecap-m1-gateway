@@ -637,6 +637,14 @@ async def api_tailscale_ssh(_: Auth, request: Request):
 GITHUB_API = "https://api.github.com/repos/bitcryptic-gw/sensecap-m1-gateway/releases/latest"
 
 
+VERSION_SUFFIX_RE = re.compile(r"-\d+-g[0-9a-f]+$")
+
+
+def _normalise_version(v: str) -> str:
+    """Strip git describe dirty suffix like -6-g19e8b0f for comparison."""
+    return VERSION_SUFFIX_RE.sub("", v)
+
+
 @app.get("/api/system/version")
 async def api_system_version(_: Auth):
     local = "unknown"
@@ -661,12 +669,13 @@ async def api_system_version(_: Auth):
                 if latest_ver:
                     result["latest"] = tag
                     result["release_url"] = data.get("html_url")
-                    result["release_notes"] = data.get("body", "")[:5000]  # plain text, truncated
+                    result["release_notes"] = data.get("body", "")[:5000]
                     if local and local != "unknown":
-                        # Compare date-based versions: YYYY.MM.DD
-                        result["update_available"] = latest_ver > local
+                        # Strip git describe suffix before comparison
+                        normalised = _normalise_version(local)
+                        result["update_available"] = latest_ver > normalised
     except Exception:
-        pass  # silent failure — return null fields
+        pass
 
     return result
 
@@ -725,17 +734,14 @@ def _current_version() -> str:
 
 @app.get("/api/system/ota/changes")
 async def api_system_ota_changes(_: Auth):
-    # git fetch as gateway-ui user
-    rc, out, err = await _run_async(
-        ["git", "-C", "/opt/gateway", "fetch", "origin"], timeout=30
-    )
+    if not Path(_OTA_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="ota-update-wrapper not installed")
+
+    rc, out, err = await _run_async([_OTA_WRAPPER, "--changes"], timeout=30)
     if rc != 0:
         raise HTTPException(status_code=503, detail=err or out or "git fetch failed — no network?")
 
-    rc2, diff_out, _ = _run(
-        ["git", "-C", "/opt/gateway", "diff", "--name-only", "HEAD..origin/main"], timeout=15
-    )
-    changed = [f.strip() for f in diff_out.splitlines() if f.strip()] if rc2 == 0 else []
+    changed = [f.strip() for f in out.splitlines() if f.strip()]
 
     affected_groups, boot_changes = _map_changed_files(changed)
     latest_ver = _current_version()
