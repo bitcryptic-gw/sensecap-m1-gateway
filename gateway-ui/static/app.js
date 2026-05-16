@@ -648,7 +648,7 @@ async function loadOtaStatus() {
     const d = await api('/api/system/version');
     const localEl = document.getElementById('ota-local-ver');
     if (d.local && d.local !== 'unknown') {
-      localEl.textContent = d.local;
+      localEl.textContent = fmtVersion(d.local);
       localEl.className = 'kv-value';
     } else {
       localEl.textContent = 'Unknown';
@@ -658,7 +658,7 @@ async function loadOtaStatus() {
       document.getElementById('ota-status').classList.add('hidden');
       document.getElementById('ota-update-available').classList.remove('hidden');
       document.getElementById('ota-version-compare').innerHTML =
-        `<span class="dim">${d.local}</span> <span style="color:var(--text-dim)">→</span> ` +
+        `<span class="dim">${fmtVersion(d.local)}</span> <span style="color:var(--text-dim)">→</span> ` +
         `<a href="${d.release_url || '#'}" target="_blank" rel="noopener" style="color:var(--cyan)">${d.latest}</a>`;
       const notesWrap = document.getElementById('ota-release-notes-wrap');
       if (d.release_notes) {
@@ -928,7 +928,7 @@ async function setHeaderInfo() {
     const headerVer = document.getElementById('header-version');
     const badge = document.getElementById('header-update-badge');
     if (ver.status === 'fulfilled' && ver.value.local && ver.value.local !== 'unknown') {
-      headerVer.textContent = ver.value.local;
+      headerVer.textContent = fmtVersion(ver.value.local);
       headerVer.style.display = '';
       if (ver.value.update_available) {
         badge.classList.remove('hidden');
@@ -969,6 +969,10 @@ function fmtTimestamp(ts) {
   } catch {
     return ts;
   }
+}
+
+function fmtVersion(ver) {
+  return ver ? ver.replace(/-\d+-g[0-9a-f]+$/, '') : ver;
 }
 
 function showResult(id, msg, isError) {
