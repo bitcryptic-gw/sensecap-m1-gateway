@@ -456,7 +456,10 @@ async function loadNetwork() {
     api('/api/network/tailscale'),
   ]);
   if (ifaces.status === 'fulfilled') renderInterfaces(ifaces.value);
-  if (ts.status     === 'fulfilled') renderTailscale(ts.value);
+  if (ts.status     === 'fulfilled') {
+    renderTailscaleInterface(ts.value);
+    renderTailscaleOptions(ts.value);
+  }
 }
 
 function renderInterfaces(d) {
@@ -479,46 +482,68 @@ function renderInterfaces(d) {
   }
 }
 
-// ── Network — Tailscale ──────────────────────────────────────────────────────
+// ── Network — Tailscale Interface Card ───────────────────────────────────────
 
-function renderTailscale(d) {
-  const body = document.getElementById('tailscale-body');
-  const routingCard = document.getElementById('tailscale-routing-card');
-
+function renderTailscaleInterface(d) {
+  const el = document.getElementById('iface-tailscale');
   if (d.status === 'not-installed') {
-    body.innerHTML = '<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-dim">○ Not installed</span></div>' +
+    el.innerHTML = '<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-dim">○ Not installed</span></div>' +
       '<p class="hint mt">Run <code>sudo /opt/gateway/scripts/install-tailscale.sh</code> to install.</p>';
-    routingCard.classList.add('hidden');
     return;
   }
   if (d.status === 'stopped') {
-    body.innerHTML = '<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● Stopped</span></div>' +
+    el.innerHTML = '<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● Stopped</span></div>' +
       '<p class="hint mt">Start with <code>sudo systemctl start tailscaled</code>.</p>';
-    routingCard.classList.add('hidden');
     return;
   }
   if (d.status !== 'connected') {
-    body.innerHTML = `<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● ${d.status}</span></div>`;
-    routingCard.classList.add('hidden');
+    el.innerHTML = `<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● ${d.status}</span></div>`;
     return;
   }
-
-  routingCard.classList.remove('hidden');
-
   const onlineLabel = d.online
     ? '<span class="badge badge-green">● Connected</span>'
     : '<span class="badge badge-yellow">● Offline</span>';
-
-  const ips = (d.ips || []).map(ip => `<code>${ip}</code>`).join(', ') || '<span class="dim">—</span>';
-  const hostname = d.hostname || '<span class="dim">—</span>';
-
-  body.innerHTML = kv([
+  el.innerHTML = kv([
     ['Status', onlineLabel],
-    ['Tailscale IP', ips],
-    ['Hostname', hostname],
-    ['IP forwarding', d.ip_forward ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-dim">Disabled</span>'],
-    ['Advertised routes', d.advertised_routes || '<span class="dim">None</span>'],
+    ['Tailscale IP', d.ip ? `<code>${d.ip}</code>` : '<span class="dim">—</span>'],
+    ['Hostname', d.hostname || '<span class="dim">—</span>'],
+    ['IP forwarding', d.ip_forwarding === 'enabled' ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-dim">Disabled</span>'],
   ]);
+}
+
+// ── Network — Tailscale Options Card ─────────────────────────────────────────
+
+function renderTailscaleOptions(d) {
+  const optionsCard = document.getElementById('tailscale-options-card');
+  const routingToggle = document.getElementById('ts-routing-toggle');
+  const subnetsInput = document.getElementById('ts-subnets');
+  const applyBtn = document.getElementById('btn-ts-routing');
+  const sshToggle = document.getElementById('ts-ssh-toggle');
+  const routingFields = document.getElementById('ts-routing-fields');
+
+  const connected = d.status === 'connected' && d.online;
+
+  if (!connected) {
+    optionsCard.classList.add('card-disabled');
+    routingToggle.disabled = true;
+    sshToggle.disabled = true;
+    subnetsInput.disabled = true;
+    applyBtn.disabled = true;
+    return;
+  }
+
+  optionsCard.classList.remove('card-disabled');
+  routingToggle.disabled = false;
+  sshToggle.disabled = false;
+
+  const hasRoutes = d.advertised_routes && d.advertised_routes.length > 0;
+  routingToggle.checked = hasRoutes;
+  subnetsInput.value = hasRoutes ? d.advertised_routes.join(', ') : '';
+  routingFields.classList.toggle('hidden', !hasRoutes);
+  subnetsInput.disabled = !hasRoutes;
+  applyBtn.disabled = !hasRoutes;
+
+  sshToggle.checked = d.ssh_enabled;
 }
 
 // ── Network — Tailscale Auth ─────────────────────────────────────────────────
@@ -553,7 +578,7 @@ async function connectTailscale() {
   btn.disabled = true;
   btn.textContent = 'Connecting…';
   try {
-    await api('/api/network/tailscale/auth', 'POST', { key });
+    await api('/api/network/tailscale/connect', 'POST', { key });
     showResult('tailscale-auth-result', 'Connected ✓', false);
     document.getElementById('tailscale-key').value = '';
     setTimeout(loadNetwork, 2000);
@@ -565,23 +590,36 @@ async function connectTailscale() {
   }
 }
 
-// ── Network — Tailscale Routing ──────────────────────────────────────────────
+// ── Network — Tailscale Subnet Routing ───────────────────────────────────────
 
 async function applyTailscaleRouting() {
-  const enabled = document.getElementById('tailscale-routing-toggle').checked;
-  const subnets = document.getElementById('tailscale-subnets').value.trim();
-  const btn = document.getElementById('btn-tailscale-routing');
+  const subnets = document.getElementById('ts-subnets').value.trim();
+  const btn = document.getElementById('btn-ts-routing');
   btn.disabled = true;
   btn.textContent = 'Applying…';
   try {
-    await api('/api/network/tailscale/routing', 'POST', { enabled, subnets });
-    showResult('tailscale-routing-result', 'Applied ✓', false);
+    await api('/api/network/tailscale/routes', 'POST', { subnets });
+    showResult('ts-routing-result', 'Applied ✓', false);
     setTimeout(loadNetwork, 2000);
   } catch (e) {
-    if (e.message !== 'unauthorized') showResult('tailscale-routing-result', e.message, true);
+    if (e.message !== 'unauthorized') showResult('ts-routing-result', e.message, true);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Apply';
+  }
+}
+
+// ── Network — Tailscale SSH ──────────────────────────────────────────────────
+
+async function applyTailscaleSsh(enabled) {
+  try {
+    await api('/api/network/tailscale/ssh', 'POST', { enabled });
+    showResult('ts-ssh-result', enabled ? 'SSH enabled ✓' : 'SSH disabled ✓', false);
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      showResult('ts-ssh-result', e.message, true);
+      document.getElementById('ts-ssh-toggle').checked = !enabled;
+    }
   }
 }
 
@@ -766,8 +804,40 @@ function wireEvents() {
   document.getElementById('tailscale-key').addEventListener('input', _tsKeyUpdateBtn);
   document.getElementById('btn-tailscale-connect').addEventListener('click', connectTailscale);
 
-  // Network — Tailscale routing
-  document.getElementById('btn-tailscale-routing').addEventListener('click', applyTailscaleRouting);
+  // Network — Tailscale routing toggle (show/hide fields, immediate disable)
+  document.getElementById('ts-routing-toggle').addEventListener('change', async function() {
+    const enabled = this.checked;
+    const fields = document.getElementById('ts-routing-fields');
+    const subnetsInput = document.getElementById('ts-subnets');
+    const applyBtn = document.getElementById('btn-ts-routing');
+    if (!enabled) {
+      showResult('ts-routing-result', 'Disabling…', false);
+      try {
+        await api('/api/network/tailscale/routes', 'POST', { subnets: '' });
+        fields.classList.add('hidden');
+        subnetsInput.disabled = true;
+        applyBtn.disabled = true;
+        showResult('ts-routing-result', 'Subnet routing disabled ✓', false);
+        setTimeout(loadNetwork, 2000);
+      } catch (e) {
+        if (e.message !== 'unauthorized') showResult('ts-routing-result', e.message, true);
+        this.checked = true;
+      }
+    } else {
+      fields.classList.remove('hidden');
+      subnetsInput.disabled = false;
+      applyBtn.disabled = false;
+    }
+  });
+
+  // Network — Tailscale SSH toggle (immediate)
+  document.getElementById('ts-ssh-toggle').addEventListener('change', async function() {
+    const enabled = this.checked;
+    applyTailscaleSsh(enabled);
+  });
+
+  // Network — Tailscale routing apply
+  document.getElementById('btn-ts-routing').addEventListener('click', applyTailscaleRouting);
 
   // Network — Port
   document.getElementById('btn-save-port').addEventListener('click', savePort);

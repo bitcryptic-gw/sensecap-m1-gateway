@@ -31,6 +31,7 @@ HELIUM_CONF2  = "/opt/gateway/config/settings.toml"
 _SYSTEMCTL    = "/bin/systemctl"
 _APPLY_BAND   = "/opt/gateway/scripts/apply-band.sh"
 _TAILSCALE    = "/usr/bin/tailscale"
+_TS_WRAPPER   = "/usr/local/bin/tailscale-wrapper"
 _SYSCTL_W     = "/usr/sbin/sysctl"
 
 BAND_RE = re.compile(r"^[a-z][a-z0-9_]{1,30}$")
@@ -452,101 +453,113 @@ def api_network_tailscale(_: Auth):
     self_info = data.get("Self", {})
     online = self_info.get("Online", False)
     ips = self_info.get("TailscaleIPs", [])
+    ip = ips[0] if ips else ""
     hostname = self_info.get("DNSName", "").rstrip(".")
 
-    # Check subnet routing
-    ip_forward = False
+    # Check IP forwarding
+    ip_forwarding = "disabled"
     rc2, fwd_out, _ = _run(["cat", "/proc/sys/net/ipv4/ip_forward"])
     if rc2 == 0 and fwd_out.strip() == "1":
-        ip_forward = True
+        ip_forwarding = "enabled"
 
-    # Check advertised routes from tailscale status (may not be present in JSON)
-    advertised = ""
-    # Check tailscale up output for --advertise-routes
-    rc3, up_out, _ = _run([_TAILSCALE, "up", "--json"])
+    # Check advertised routes and SSH from debug prefs
+    advertised = []
+    ssh_enabled = False
+    rc3, prefs_out, _ = _run([_TAILSCALE, "debug", "prefs"])
     if rc3 == 0:
         try:
-            up_data = json.loads(up_out)
-            advertised = up_data.get("AdvertisedRoutes", "")
+            prefs = json.loads(prefs_out)
+            raw = prefs.get("AdvertiseRoutes") or prefs.get("AdvertisedRoutes") or []
+            if isinstance(raw, list):
+                advertised = [str(r) for r in raw]
+            elif isinstance(raw, str) and raw:
+                advertised = [raw]
+            ssh_enabled = bool(prefs.get("SSHEnabled", False))
         except (json.JSONDecodeError, AttributeError):
-            advertised = ""
+            pass
 
     return {
         "status": "connected",
+        "connected": True,
         "online": online,
+        "ip": ip,
         "ips": ips,
         "hostname": hostname,
-        "ip_forward": ip_forward,
+        "ip_forwarding": ip_forwarding,
         "advertised_routes": advertised,
+        "ssh_enabled": ssh_enabled,
     }
 
 
 TS_KEY_VALID_RE = re.compile(r"^tskey(-auth)?-[A-Za-z0-9]+$")
 
 
-@app.post("/api/network/tailscale/auth")
-async def api_tailscale_auth(_: Auth, request: Request):
+@app.post("/api/network/tailscale/connect")
+async def api_tailscale_connect(_: Auth, request: Request):
     body = await request.json()
     key = str(body.get("key", "")).strip()
 
     if not TS_KEY_VALID_RE.match(key):
         raise HTTPException(status_code=400, detail="Invalid auth key format — must start with tskey- or tskey-auth-")
 
-    # Run tailscale up
-    proc = await asyncio.create_subprocess_exec(
-        "sudo", _TAILSCALE, "up", "--authkey", key,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
+    if not Path(_TS_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="tailscale-wrapper not installed — run install-tailscale.sh")
+
+    rc, out, err = _run([_TS_WRAPPER, "auth", key], timeout=30)
 
     # Scrub key from any output
-    out_text = stdout.decode().replace(key, "[REDACTED]")
-    err_text = stderr.decode().replace(key, "[REDACTED]")
+    out_clean = out.replace(key, "[REDACTED]")
+    err_clean = err.replace(key, "[REDACTED]")
 
-    if proc.returncode != 0:
-        raise HTTPException(status_code=500, detail=err_text or out_text or "tailscale up failed")
+    if rc != 0:
+        raise HTTPException(status_code=500, detail=err_clean or out_clean or "tailscale auth failed")
 
-    return {"ok": True, "output": out_text}
+    return {"ok": True, "output": out_clean}
 
 
-@app.post("/api/network/tailscale/routing")
-async def api_tailscale_routing(_: Auth, request: Request):
+@app.post("/api/network/tailscale/routes")
+async def api_tailscale_routes(_: Auth, request: Request):
     body = await request.json()
-    enabled = bool(body.get("enabled", False))
     subnets_str = str(body.get("subnets", "")).strip()
 
-    if enabled and not subnets_str:
-        raise HTTPException(status_code=400, detail="Subnets required when enabling routing")
+    if not Path(_TS_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="tailscale-wrapper not installed — run install-tailscale.sh")
+
     if subnets_str:
         parts = [s.strip() for s in subnets_str.split(",") if s.strip()]
         for p in parts:
             if not CIDR_RE.match(p):
                 raise HTTPException(status_code=400, detail=f"Invalid CIDR: {p}")
 
-    cmd = ["sudo", _TAILSCALE, "up"]
-    if enabled:
-        cmd += ["--advertise-routes", subnets_str]
+    rc, out, err = _run([_TS_WRAPPER, "set-routes", subnets_str], timeout=30)
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    out_text = stdout.decode()
-    err_text = stderr.decode()
+    if rc != 0:
+        raise HTTPException(status_code=500, detail=err or out or "tailscale routes failed")
 
-    if proc.returncode != 0:
-        raise HTTPException(status_code=500, detail=err_text or out_text or "tailscale routing failed")
-
-    # Persist ip_forward setting
-    if enabled:
+    # Persist ip_forward setting when routes are set
+    if subnets_str:
         sysctl_conf = Path("/etc/sysctl.d/99-tailscale.conf")
         sysctl_conf.write_text("net.ipv4.ip_forward=1\n")
         _run([_SYSCTL_W, "net.ipv4.ip_forward=1"])
 
-    return {"ok": True, "output": out_text}
+    return {"ok": True, "output": out}
+
+
+@app.post("/api/network/tailscale/ssh")
+async def api_tailscale_ssh(_: Auth, request: Request):
+    body = await request.json()
+    enabled = bool(body.get("enabled", False))
+
+    if not Path(_TS_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="tailscale-wrapper not installed — run install-tailscale.sh")
+
+    val = "on" if enabled else "off"
+    rc, out, err = _run([_TS_WRAPPER, "set-ssh", val], timeout=30)
+
+    if rc != 0:
+        raise HTTPException(status_code=500, detail=err or out or "tailscale ssh failed")
+
+    return {"ok": True, "output": out}
 
 
 # ── Logs ─────────────────────────────────────────────────────────────────────

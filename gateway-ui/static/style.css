@@ -79,6 +79,7 @@ html, body {
 
 .modal-box input[type="password"]:focus { border-color: var(--blue); }
 
+.hidden { display: none; }
 .error { color: var(--red); font-size: .85rem; }
 .error.hidden { display: none; }
 
@@ -549,6 +550,7 @@ html, body {
 
 /* ── Misc ────────────────────────────────────────────────────────────────────── */
 .dim     { color: var(--text-dim); }
+.card-disabled { opacity: .45; pointer-events: none; }
 .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; margin: .5rem auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
