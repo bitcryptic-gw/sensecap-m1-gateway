@@ -281,10 +281,17 @@ html, body {
   cursor: pointer;
   font-size: .8rem;
   padding: .3rem .7rem;
-  transition: background .15s, color .15s;
+  transition: background .15s, color .15s, border-color .15s;
 }
-.log-pill.active { background: var(--surface2); color: var(--text); }
-.log-pill:hover:not(.active) { color: var(--text); }
+.log-pill.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.log-pill:hover:not(.active) {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
 
 /* ── Coming soon ────────────────────────────────────────────────────────────── */
 .coming-soon { display: flex; flex-direction: column; gap: .5rem; }
