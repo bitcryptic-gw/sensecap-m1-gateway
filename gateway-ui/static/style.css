@@ -292,17 +292,28 @@ html, body {
   padding: .25rem .45rem;
   border-radius: 4px;
   margin-right: .3rem;
-  margin-bottom: .3rem;
-  cursor: default;
+  cursor: pointer;
 }
 .service-dot-sub {
-  display: inline-block;
+  display: block;
   font-size: .7rem;
   color: var(--text-dim);
-  margin-right: .5rem;
+  padding-left: 1rem;
   margin-bottom: .3rem;
 }
 .service-dot-detail { margin-right: .3rem; }
+
+/* ── Service group (collapsible) ───────────────────────────────────── */
+.service-group { margin-bottom: .3rem; }
+.service-group.collapsed .service-dot-sub { display: none; }
+.chevron {
+  display: inline-block;
+  margin-left: .25rem;
+  transition: transform .15s;
+}
+.service-group:not(.collapsed) .chevron {
+  transform: rotate(90deg);
+}
 
 /* ── Log pills ──────────────────────────────────────────────────────────────── */
 .log-pill {

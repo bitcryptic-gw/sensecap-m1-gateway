@@ -144,8 +144,10 @@ function renderDashServices(d) {
     const detail = (g.units || []).map(u =>
       `<span class="service-dot-detail">${u.state === 'active' ? '●' : '○'} ${u.unit.replace('.service', '')}</span>`
     ).join(' ');
-    return `<span class="service-dot ${cls}" title="${label}: ${g.active}/${g.total} active">${dot} ${label}</span>
-      <span class="service-dot-sub">${detail}</span>`;
+    return `<div class="service-group collapsed">
+      <span class="service-dot ${cls}" title="${label}: ${g.active}/${g.total} active">${dot} ${label}<span class="chevron">▸</span></span>
+      <span class="service-dot-sub">${detail}</span>
+    </div>`;
   }).join('');
 }
 
@@ -1073,6 +1075,12 @@ function wireEvents() {
       pill.classList.toggle('active');
       loadLogs();
     });
+  });
+
+  // Dashboard — group pill expand/collapse (delegated)
+  document.getElementById('dash-services-body').addEventListener('click', function(e) {
+    const group = e.target.closest('.service-group');
+    if (group) group.classList.toggle('collapsed');
   });
 
   // Settings — OTA

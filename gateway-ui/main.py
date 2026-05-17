@@ -2,6 +2,7 @@
 import asyncio
 import hmac
 import json
+import logging
 import re
 import secrets
 import socket
@@ -671,9 +672,14 @@ async def api_system_version(_: Auth):
                     result["release_url"] = data.get("html_url")
                     result["release_notes"] = data.get("body", "")[:5000]
                     if local and local != "unknown":
-                        # Strip git describe suffix before comparison
                         normalised = _normalise_version(local)
-                        result["update_available"] = latest_ver > normalised
+                        try:
+                            local_parts = tuple(int(p) for p in normalised.lstrip("v").split("."))
+                            latest_parts = tuple(int(p) for p in latest_ver.split("."))
+                            max_len = max(len(local_parts), len(latest_parts))
+                            result["update_available"] = (latest_parts + (0,) * (max_len - len(latest_parts))) > (local_parts + (0,) * (max_len - len(local_parts)))
+                        except (ValueError, AttributeError):
+                            logging.warning("version comparison failed: local=%s latest=%s", local, latest_ver)
     except Exception:
         pass
 
