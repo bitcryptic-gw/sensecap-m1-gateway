@@ -131,6 +131,10 @@ async function loadDashboard() {
 }
 
 function renderDashServices(d) {
+  const expanded = new Set();
+  document.querySelectorAll('#dash-services-body .service-group').forEach(el => {
+    if (!el.classList.contains('collapsed')) expanded.add(el.dataset.group);
+  });
   const groupOrder = ['helium', 'wingbits', 'tailscale', 'web-ui'];
   const labels = { helium: 'Helium', wingbits: 'Wingbits', tailscale: 'Tailscale', 'web-ui': 'Web UI' };
   const el = document.getElementById('dash-services-body');
@@ -144,7 +148,8 @@ function renderDashServices(d) {
     const detail = (g.units || []).map(u =>
       `<span class="service-dot-detail">${u.state === 'active' ? '●' : '○'} ${u.unit.replace('.service', '')}</span>`
     ).join(' ');
-    return `<div class="service-group collapsed">
+    const collapsedClass = expanded.has(key) ? '' : 'collapsed';
+    return `<div class="service-group ${collapsedClass}" data-group="${key}">
       <span class="service-dot ${cls}" title="${label}: ${g.active}/${g.total} active">${dot} ${label}<span class="chevron">▸</span></span>
       <span class="service-dot-sub">${detail}</span>
     </div>`;
@@ -447,13 +452,6 @@ function renderSysinfo(d, showHostname) {
     rows.unshift(['Hostname', `<code>${d.hostname}</code>`]);
   }
   el.innerHTML = kv(rows);
-
-  // Build version card
-  const buildEl = document.getElementById('build-body');
-  buildEl.innerHTML = kv([
-    ['Image version', d.image_version || 'Development build'],
-    ['Built', d.build_date || '—'],
-  ]);
 }
 
 // ── Network — Interfaces ─────────────────────────────────────────────────────

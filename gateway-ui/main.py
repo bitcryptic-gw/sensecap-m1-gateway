@@ -286,21 +286,11 @@ def api_sysinfo(_: Auth):
         cpu = "unavailable"
     _, mem, _ = _run(["free", "-m"])
     _, disk, _ = _run(["df", "-h", "/opt"])
-    image_ver = "Development build"
-    build_date = ""
-    if GW_RELEASE.exists():
-        for line in GW_RELEASE.read_text().splitlines():
-            if line.startswith("IMAGE_VERSION="):
-                image_ver = line.split("=", 1)[1].strip()
-            elif line.startswith("BUILD_DATE="):
-                build_date = line.split("=", 1)[1].strip()
     return {
         "cpu_temp":     cpu,
         "memory":       mem.strip()  or "unavailable",
         "disk":         disk.strip() or "unavailable",
         "hostname":     socket.gethostname(),
-        "image_version": image_ver,
-        "build_date":   build_date,
     }
 
 
