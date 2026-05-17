@@ -697,8 +697,8 @@ async function loadOtaStatus() {
       document.getElementById('ota-status').classList.add('hidden');
       document.getElementById('ota-update-available').classList.remove('hidden');
       document.getElementById('ota-version-compare').innerHTML =
-        `<span class="dim">${fmtVersion(d.local)}</span> <span style="color:var(--text-dim)">→</span> ` +
-        `<a href="${d.release_url || '#'}" target="_blank" rel="noopener" style="color:var(--cyan)">${d.latest}</a>`;
+        `<span><span class="dim">${fmtVersion(d.local)}</span> <span style="color:var(--text-dim)">→</span> ` +
+        `<a href="${d.release_url || '#'}" target="_blank" rel="noopener" style="color:var(--cyan)">${d.latest}</a></span>`;
       const notesWrap = document.getElementById('ota-release-notes-wrap');
       if (d.release_notes) {
         notesWrap.classList.remove('hidden');
