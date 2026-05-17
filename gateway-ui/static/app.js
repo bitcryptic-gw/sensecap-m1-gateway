@@ -702,7 +702,10 @@ async function loadOtaStatus() {
       const notesWrap = document.getElementById('ota-release-notes-wrap');
       if (d.release_notes) {
         notesWrap.classList.remove('hidden');
-        document.getElementById('ota-release-notes').textContent = d.release_notes;
+        const html = marked.parse(d.release_notes)
+          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+          .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+        document.getElementById('ota-release-notes').innerHTML = html;
       } else {
         notesWrap.classList.add('hidden');
       }

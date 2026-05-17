@@ -665,17 +665,50 @@ code.addr {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-dim);
-  font-family: var(--mono);
-  font-size: .78rem;
-  padding: .6rem .75rem;
+  color: var(--text);
+  font-size: .82rem;
+  line-height: 1.6;
+  padding: .75rem 1rem;
   margin-top: .5rem;
-  max-height: 200px;
+  max-height: 240px;
   overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
+  word-wrap: break-word;
 }
 .ota-notes.hidden { display: none; }
+.ota-notes h2 { font-size: 1rem; color: var(--text); margin: .75rem 0 .4rem; }
+.ota-notes h3 { font-size: .9rem; color: var(--text); margin: .6rem 0 .3rem; }
+.ota-notes h2:first-child, .ota-notes h3:first-child { margin-top: 0; }
+.ota-notes p  { margin: .3rem 0; }
+.ota-notes code {
+  font-family: var(--mono);
+  font-size: .78rem;
+  background: var(--surface);
+  padding: .1rem .3rem;
+  border-radius: 3px;
+  color: var(--cyan);
+}
+.ota-notes pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .5rem .7rem;
+  margin: .4rem 0;
+  overflow-x: auto;
+}
+.ota-notes pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: var(--text);
+}
+.ota-notes hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: .6rem 0;
+}
+.ota-notes a { color: var(--cyan); }
+.ota-notes ul, .ota-notes ol { padding-left: 1.25rem; margin: .3rem 0; }
+.ota-notes li { margin: .15rem 0; }
 .ota-output {
   display: block;
   margin-top: .75rem;
