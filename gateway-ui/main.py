@@ -34,6 +34,8 @@ SERVICE_GROUPS = {
     "web-ui":    {"label": "Web UI",    "units": ["gateway-ui.service"]},
 }
 
+OPTIONAL_SERVICES = {"readsb.service", "wingbits.service"}
+
 ALLOWED_OTA_UNITS = [
     "pktfwd.service", "gateway-rs.service", "gateway-ui.service",
     "readsb.service", "wingbits.service", "tailscaled.service",
@@ -188,18 +190,39 @@ def _service_info(unit: str) -> dict:
 def _service_group_status(group_key: str) -> dict:
     g = SERVICE_GROUPS.get(group_key)
     if not g:
-        return {"label": group_key, "active": 0, "total": 0, "units": []}
+        return {"label": group_key, "active": 0, "total": 0, "units": [], "group_state": "optional"}
     units = []
     active_count = 0
     for u in g["units"]:
-        info = _service_info(u) if _service_installed(u) else {"unit": u, "state": "not-installed", "since": ""}
+        if _service_installed(u):
+            info = _service_info(u)
+            raw = info["state"]
+            if raw == "active":
+                info["state"] = "active"
+            elif u in OPTIONAL_SERVICES:
+                info["state"] = "optional"
+            else:
+                info["state"] = "inactive"
+        else:
+            info = {"unit": u, "since": ""}
+            info["state"] = "optional" if u in OPTIONAL_SERVICES else "inactive"
         if info["state"] == "active":
             active_count += 1
         units.append(info)
+
+    unit_states = [u["state"] for u in units]
+    if all(s == "active" for s in unit_states):
+        group_state = "active"
+    elif any(s == "inactive" for s in unit_states):
+        group_state = "fault"
+    else:
+        group_state = "optional"
+
     return {
         "label": g["label"],
         "active": active_count,
         "total": len(g["units"]),
+        "group_state": group_state,
         "units": units,
     }
 

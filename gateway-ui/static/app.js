@@ -137,23 +137,27 @@ function renderDashServices(d) {
   });
   const groupOrder = ['helium', 'wingbits', 'tailscale', 'web-ui'];
   const labels = { helium: 'Helium', wingbits: 'Wingbits', tailscale: 'Tailscale', 'web-ui': 'Web UI' };
+  const stateClass = { active: 'status-active', fault: 'status-fault', optional: 'status-optional' };
+  const stateLabel = { active: 'active', fault: 'fault', optional: 'not configured' };
   const el = document.getElementById('dash-services-body');
   el.innerHTML = groupOrder.map(key => {
-    const g = d[key] || { active: 0, total: 0, units: [] };
-    let cls, dot;
-    if (g.active === g.total && g.total > 0) { cls = 'badge-green'; dot = '●'; }
-    else if (g.active > 0) { cls = 'badge-yellow'; dot = '●'; }
-    else { cls = 'badge-dim'; dot = g.total === 0 ? '○' : '●'; }
+    const g = d[key] || { group_state: 'optional', units: [] };
+    const cls = stateClass[g.group_state] || 'status-optional';
     const label = labels[key] || key;
-    const detail = (g.units || []).map(u =>
-      `<span class="service-dot-detail">${u.state === 'active' ? '●' : '○'} ${u.unit.replace('.service', '')}</span>`
-    ).join(' ');
+    const detail = (g.units || []).map(u => {
+      const uc = stateClass[u.state] || 'status-optional';
+      return `<span class="service-dot-detail ${uc}">● ${u.unit.replace('.service', '')}</span>`;
+    }).join(' ');
     const collapsedClass = expanded.has(key) ? '' : 'collapsed';
     return `<div class="service-group ${collapsedClass}" data-group="${key}">
-      <span class="service-dot ${cls}" title="${label}: ${g.active}/${g.total} active">${dot} ${label}<span class="chevron">▸</span></span>
+      <span class="service-dot ${cls}" title="${label}: ${stateLabel[g.group_state] || 'not configured'}">● ${label}<span class="chevron">▸</span></span>
       <span class="service-dot-sub">${detail}</span>
     </div>`;
-  }).join('');
+  }).join('') + `<div class="services-legend">
+    <span class="service-dot-detail status-active">● Running</span>
+    <span class="service-dot-detail status-fault">● Fault</span>
+    <span class="service-dot-detail status-optional">● Not configured</span>
+  </div>`;
 }
 
 // ── Applications: Helium + Wingbits ──────────────────────────────────────────

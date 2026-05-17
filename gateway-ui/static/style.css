@@ -284,6 +284,15 @@ html, body {
 }
 .sub-section-title:first-of-type { margin-top: 0; }
 
+/* ── Status colours ──────────────────────────────────────────────────────────── */
+.status-active   { color: var(--green); }
+.status-fault    { color: var(--red); }
+.status-optional { color: var(--text-dim); }
+
+.service-dot.status-active   { background: rgba(62,207,110,.15); }
+.service-dot.status-fault    { background: rgba(240,75,93,.15); }
+.service-dot.status-optional { background: var(--surface2); }
+
 /* ── Dashboard service dots ─────────────────────────────────────────────────── */
 .service-dot {
   display: flex;
@@ -303,6 +312,16 @@ html, body {
   margin-bottom: .3rem;
 }
 .service-dot-detail { margin-right: .3rem; }
+
+/* ── Services legend ────────────────────────────────────────────────────────── */
+.services-legend {
+  border-top: 1px solid var(--border);
+  margin-top: .5rem;
+  padding-top: .5rem;
+  display: flex;
+  gap: 1rem;
+  font-size: .7rem;
+}
 
 /* ── Service group (collapsible) ───────────────────────────────────── */
 .service-group { margin-bottom: .3rem; }
