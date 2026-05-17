@@ -314,7 +314,7 @@ def api_sysinfo(_: Auth):
     mem_str = mem_out.strip() or "unavailable"
 
     mem_pct = None
-    m = re.search(r"^Mem:\s+(\d+)\s+(\d+)", mem_str)
+    m = re.search(r"^Mem:\s+(\d+)\s+(\d+)", mem_str, re.MULTILINE)
     if m:
         total, used = int(m.group(1)), int(m.group(2))
         if total > 0:
