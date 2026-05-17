@@ -467,7 +467,7 @@ function renderSysinfo(d, showHostname) {
   let memLine = '';
   const memMatch = d.memory.match(/^Mem:\s+(\d+)\s+(\d+)/m);
   if (memMatch && d.mem_used_pct !== null && d.mem_used_pct !== undefined) {
-    memLine = `${memMatch[2]} / ${memMatch[1]} MB <span class="dim">(${d.mem_used_pct}%)</span>`;
+    memLine = `<span>${memMatch[2]} / ${memMatch[1]} MB <span class="dim">(${d.mem_used_pct}%)</span></span>`;
   }
   if (!memLine) memLine = `<span class="dim">${d.memory || 'unavailable'}</span>`;
 
@@ -477,7 +477,7 @@ function renderSysinfo(d, showHostname) {
   if (diskRows.length >= 2) {
     const parts = diskRows[1].trim().split(/\s+/);
     if (parts.length >= 5) {
-      diskLine = `${parts[2]} used of ${parts[1]} <span class="dim">(${d.disk_used_pct}%)</span>`;
+      diskLine = `<span>${parts[2]} used of ${parts[1]} <span class="dim">(${d.disk_used_pct}%)</span></span>`;
     }
   }
   if (!diskLine) diskLine = `<span class="dim">${d.disk || 'unavailable'}</span>`;
@@ -956,20 +956,14 @@ async function copyToken() {
 
 async function setHeaderInfo() {
   try {
-    const [sys, ver] = await Promise.allSettled([
-      api('/api/sysinfo'),
-      api('/api/system/version'),
-    ]);
-    const headerName = document.getElementById('header-name');
-    if (sys.status === 'fulfilled' && sys.value.hostname) {
-      headerName.textContent = sys.value.hostname;
-    }
+    document.getElementById('header-name').textContent = 'BitCryptic™ OS';
+    const ver = await api('/api/system/version');
     const headerVer = document.getElementById('header-version');
     const badge = document.getElementById('header-update-badge');
-    if (ver.status === 'fulfilled' && ver.value.local && ver.value.local !== 'unknown') {
-      headerVer.textContent = fmtVersion(ver.value.local);
+    if (ver.local && ver.local !== 'unknown') {
+      headerVer.textContent = fmtVersion(ver.local);
       headerVer.style.display = '';
-      if (ver.value.update_available) {
+      if (ver.update_available) {
         badge.classList.remove('hidden');
       } else {
         badge.classList.add('hidden');
