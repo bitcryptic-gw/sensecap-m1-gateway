@@ -425,32 +425,67 @@ function clearWingbitsOutput() {
 
 function renderSysinfo(d, showHostname) {
   const el = document.getElementById('sysinfo-body');
-  const temp = d.cpu_temp.replace("temp=", "").replace("'C", " °C");
 
-  let memLine = '';
-  const memMatch = d.memory.match(/^Mem:\s+(\d+)\s+(\d+)\s+(\d+)/m);
-  if (memMatch) {
-    const [, total, used] = memMatch;
-    const pct = Math.round((used / total) * 100);
-    memLine = `${used} / ${total} MB <span class="dim">(${pct}%)</span>`;
-  } else {
-    memLine = `<span class="dim">${d.memory || 'unavailable'}</span>`;
+  function barPctClass(pct) {
+    if (pct >= 90) return 'util-bar-red';
+    if (pct >= 70) return 'util-bar-amber';
+    return 'util-bar-green';
   }
 
+  function tempBarClass(c) {
+    if (c >= 75) return 'util-bar-red';
+    if (c >= 60) return 'util-bar-amber';
+    return 'util-bar-green';
+  }
+
+  function tempTextClass(c) {
+    if (c >= 75) return 'temp-red';
+    if (c >= 60) return 'temp-amber';
+    return 'temp-green';
+  }
+
+  function barHtml(pct, cls) {
+    if (pct === null || pct === undefined) return '';
+    const w = Math.min(Math.max(pct, 0), 100);
+    return `<div class="util-bar"><div class="util-bar-fill ${cls}" style="width:${w}%"></div></div>`;
+  }
+
+  // CPU temp
+  let temp = d.cpu_temp;
+  if (temp !== 'unavailable') {
+    temp = d.cpu_temp.replace("temp=", "").replace("'C", " °C");
+  }
+  const cpuRaw = d.cpu_temp_raw;
+  const cpuText = cpuRaw !== null && cpuRaw !== undefined
+    ? `<span class="${tempTextClass(cpuRaw)}">${temp}</span>`
+    : `<span class="dim">${temp}</span>`;
+  const cpuBar = cpuRaw !== null && cpuRaw !== undefined
+    ? barHtml(cpuRaw, tempBarClass(cpuRaw))
+    : '';
+
+  // Memory
+  let memLine = '';
+  const memMatch = d.memory.match(/^Mem:\s+(\d+)\s+(\d+)/m);
+  if (memMatch && d.mem_used_pct !== null && d.mem_used_pct !== undefined) {
+    memLine = `${memMatch[2]} / ${memMatch[1]} MB <span class="dim">(${d.mem_used_pct}%)</span>`;
+  }
+  if (!memLine) memLine = `<span class="dim">${d.memory || 'unavailable'}</span>`;
+
+  // Storage
   let diskLine = '';
   const diskRows = d.disk.trim().split('\n');
   if (diskRows.length >= 2) {
     const parts = diskRows[1].trim().split(/\s+/);
     if (parts.length >= 5) {
-      diskLine = `${parts[2]} used of ${parts[1]} <span class="dim">(${parts[4]})</span>`;
+      diskLine = `${parts[2]} used of ${parts[1]} <span class="dim">(${d.disk_used_pct}%)</span>`;
     }
   }
   if (!diskLine) diskLine = `<span class="dim">${d.disk || 'unavailable'}</span>`;
 
   const rows = [
-    ['CPU temp', temp],
-    ['Memory', memLine],
-    ['Disk /opt', diskLine],
+    ['CPU temp', cpuText + cpuBar],
+    ['Memory', memLine + barHtml(d.mem_used_pct, barPctClass(d.mem_used_pct || 0))],
+    ['Storage', diskLine + barHtml(d.disk_used_pct, barPctClass(d.disk_used_pct || 0))],
   ];
   if (showHostname && d.hostname) {
     rows.unshift(['Hostname', `<code>${d.hostname}</code>`]);

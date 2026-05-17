@@ -302,18 +302,45 @@ def api_status_groups(_: Auth):
 
 @app.get("/api/sysinfo")
 def api_sysinfo(_: Auth):
+    cpu_raw = None
     try:
         raw = int(Path("/sys/class/thermal/thermal_zone0/temp").read_text().strip())
         cpu = f"{raw / 1000:.1f} °C"
+        cpu_raw = round(raw / 1000, 1)
     except Exception:
         cpu = "unavailable"
-    _, mem, _ = _run(["free", "-m"])
-    _, disk, _ = _run(["df", "-h", "/opt"])
+
+    _, mem_out, _ = _run(["free", "-m"])
+    mem_str = mem_out.strip() or "unavailable"
+
+    mem_pct = None
+    m = re.search(r"^Mem:\s+(\d+)\s+(\d+)", mem_str)
+    if m:
+        total, used = int(m.group(1)), int(m.group(2))
+        if total > 0:
+            mem_pct = round((used / total) * 100)
+
+    _, disk_out, _ = _run(["df", "-h", "/opt"])
+    disk_str = disk_out.strip() or "unavailable"
+
+    disk_pct = None
+    lines = disk_str.splitlines()
+    if len(lines) >= 2:
+        parts = lines[1].split()
+        if len(parts) >= 5:
+            try:
+                disk_pct = int(parts[4].rstrip("%"))
+            except (ValueError, TypeError):
+                pass
+
     return {
-        "cpu_temp":     cpu,
-        "memory":       mem.strip()  or "unavailable",
-        "disk":         disk.strip() or "unavailable",
-        "hostname":     socket.gethostname(),
+        "cpu_temp":      cpu,
+        "memory":        mem_str,
+        "disk":          disk_str,
+        "hostname":      socket.gethostname(),
+        "cpu_temp_raw":  cpu_raw,
+        "mem_used_pct":  mem_pct,
+        "disk_used_pct": disk_pct,
     }
 
 

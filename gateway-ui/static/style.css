@@ -193,7 +193,12 @@ html, body {
   font-size: .82rem;
 }
 
-.kv-value { flex: 1; }
+.kv-value {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 
 /* ── Services ────────────────────────────────────────────────────────────────── */
 .service-row {
@@ -322,6 +327,28 @@ html, body {
   gap: 1rem;
   font-size: .7rem;
 }
+
+/* ── Utilisation bars ───────────────────────────────────────────────────────── */
+.util-bar {
+  height: 5px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  width: 100%;
+}
+.util-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .3s;
+}
+.util-bar-green  { background: var(--green); }
+.util-bar-amber  { background: var(--yellow); }
+.util-bar-red    { background: var(--red); }
+
+/* ── Temperature text colours ────────────────────────────────────────────────── */
+.temp-green  { color: var(--green); }
+.temp-amber  { color: var(--yellow); }
+.temp-red    { color: var(--red); }
 
 /* ── Service group (collapsible) ───────────────────────────────────── */
 .service-group { margin-bottom: .3rem; }
