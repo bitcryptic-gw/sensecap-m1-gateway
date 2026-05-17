@@ -81,13 +81,15 @@ sudo cat /etc/gateway-ui/token
 
 | Tab | What it shows |
 |-----|---------------|
-| **Dashboard** | Grouped service status (Helium / Wingbits / Tailscale / Web UI), system metrics (CPU / memory / disk), build version |
+| **Dashboard** | Grouped service status (Helium / Wingbits / Tailscale / Web UI), system metrics (CPU / memory / disk) |
 | **Applications** | Helium: gateway identity, beacon stats, LoRa region. Wingbits: status and in-browser setup/reconfiguration flow |
 | **Network** | Interface cards (eth0 / wlan0 / Tailscale), Tailscale auth + options (subnet routing, SSH toggle), web UI port |
 | **Live Log** | Unified journal stream with filter pills: System / Helium / Wingbits / Tailscale |
 | **Settings** | OTA updates (version check, changelog, smart service restart, SSE stream), bearer token display and regenerate |
 
 The header bar shows the current build version (`SenseCap M1 — BitCryptic OS vYYYY.MM.DD`). An amber **⬆ Update available** badge appears when a newer GitHub release is detected; clicking navigates to the Settings OTA section.
+
+*All screenshots taken on desktop. Mobile layout stacks cards vertically.*
 
 ![Dashboard](docs/screenshots/dashboard.png)
 ![Applications](docs/screenshots/applications.png)
@@ -243,6 +245,8 @@ sudo ln -sf /opt/gateway/scripts/reset_lgw.sh /opt/gateway/pktfwd/reset_lgw.sh
 │   ├── global_conf.json    # Active frequency plan
 │   └── global_conf.*.json  # Frequency plan templates (one per region)
 ├── docker/                 # Reserved for future non-Helium/non-Wingbits workloads
+├── docs/
+│   └── screenshots/        # UI screenshots for README
 ├── gateway-ui/             # FastAPI web UI source
 │   ├── main.py
 │   ├── requirements.txt
