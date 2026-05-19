@@ -25,8 +25,9 @@ TOKEN_PATH    = Path("/etc/gateway-ui/token")
 GW_CONFIG_DIR = Path("/opt/gateway/config")
 GW_ENV        = Path("/opt/gateway/config.env")
 STATIC_DIR    = Path(__file__).parent / "static"
-GW_RELEASE    = Path("/etc/gateway-release")
-GW_VERSION    = Path("/etc/gateway-version")
+GW_RELEASE       = Path("/etc/gateway-release")
+GW_VERSION       = Path("/etc/gateway-version")
+GITHUB_TOKEN_PATH = Path("/etc/gateway-ui/github-token")
 
 SERVICE_GROUPS = {
     "helium":    {"label": "Helium",    "units": ["pktfwd.service", "gateway-rs.service"]},
@@ -745,6 +746,13 @@ async def api_tailscale_ssh(_: Auth, request: Request):
 GITHUB_API = "https://api.github.com/repos/bitcryptic-gw/sensecap-m1-gateway/releases/latest"
 
 
+def _load_github_token() -> str | None:
+    try:
+        return GITHUB_TOKEN_PATH.read_text().strip() or None
+    except Exception:
+        return None
+
+
 VERSION_SUFFIX_RE = re.compile(r"-\d+-g[0-9a-f]+$")
 
 
@@ -769,7 +777,11 @@ async def api_system_version(_: Auth):
 
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(GITHUB_API)
+            gh_headers = {}
+            gh_token = _load_github_token()
+            if gh_token:
+                gh_headers["Authorization"] = f"Bearer {gh_token}"
+            r = await client.get(GITHUB_API, headers=gh_headers)
             if r.status_code == 200:
                 data = r.json()
                 tag = data.get("tag_name", "")
@@ -856,7 +868,11 @@ async def api_system_ota_changes(_: Auth):
     latest_tag = "unknown"
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(GITHUB_API)
+            gh_headers = {}
+            gh_token = _load_github_token()
+            if gh_token:
+                gh_headers["Authorization"] = f"Bearer {gh_token}"
+            r = await client.get(GITHUB_API, headers=gh_headers)
             if r.status_code == 200:
                 latest_tag = r.json().get("tag_name", "unknown")
     except Exception:
@@ -1115,7 +1131,11 @@ async def _ntfy_notifier():
             latest_version = None
             try:
                 async with httpx.AsyncClient(timeout=5) as client:
-                    r = await client.get(GITHUB_API)
+                    gh_headers = {}
+                    gh_token = _load_github_token()
+                    if gh_token:
+                        gh_headers["Authorization"] = f"Bearer {gh_token}"
+                    r = await client.get(GITHUB_API, headers=gh_headers)
                     if r.status_code == 200:
                         data = r.json()
                         tag = data.get("tag_name", "")

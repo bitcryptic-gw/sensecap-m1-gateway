@@ -196,7 +196,7 @@ else
     warn "gcc not found — system-power-wrapper omitted (install build-essential and re-run)"
 fi
 
-# ── 10. NTFY config ─────────────────────────────────────────────────────────
+# ── 10. Gateway UI config files ─────────────────────────────────────────────────────────
 
 echo ""
 echo "--- NTFY Config ---"
@@ -214,6 +214,21 @@ if [ ! -f "${NTFY_DIR}/ntfy.json" ]; then
     green "Created /etc/gateway-ui/ntfy.json"
 else
     green "ntfy.json already exists"
+fi
+
+echo ""
+echo "--- GitHub Token ---"
+if [ ! -f /etc/gateway-ui/github-token ]; then
+    touch /etc/gateway-ui/github-token
+    if getent group gateway-ui &>/dev/null; then
+        chown root:gateway-ui /etc/gateway-ui/github-token
+    else
+        chown root:root /etc/gateway-ui/github-token
+    fi
+    chmod 640 /etc/gateway-ui/github-token
+    green "Created /etc/gateway-ui/github-token (populate with GitHub PAT)"
+else
+    green "github-token already exists"
 fi
 
 # ── 11. Post-provisioning summary ─────────────────────────────────────────────
