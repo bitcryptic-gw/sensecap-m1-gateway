@@ -194,6 +194,31 @@ int main(int argc, char *argv[]) {
         if (nl) *nl = '\0';
     }
 
+    /* Update /etc/gateway-version with new git describe output */
+    char version[256] = "unknown";
+    setuid(repo_owner);
+    setgid(0);
+    char describe_buf[256] = "";
+    int describe_rc = run_capture(
+        (char *[]){"/usr/bin/git", "-C", REPO_DIR, "describe", "--tags", "--always", NULL},
+        describe_buf, sizeof(describe_buf));
+    setuid(0);
+    setgid(0);
+
+    if (describe_rc == 0 && describe_buf[0]) {
+        char *nl = strchr(describe_buf, '\n');
+        if (nl) *nl = '\0';
+        strncpy(version, describe_buf, sizeof(version) - 1);
+        version[sizeof(version) - 1] = '\0';
+        FILE *vf = fopen("/etc/gateway-version", "w");
+        if (vf) {
+            fprintf(vf, "%s\n", version);
+            fclose(vf);
+        }
+    } else {
+        fprintf(stderr, "WARNING: git describe failed (exit %d) — /etc/gateway-version not updated\n", describe_rc);
+    }
+
     /* Write diff to stdout */
     if (pre_head[0] && post_head[0] && strcmp(pre_head, post_head) != 0) {
         char *diff_argv[] = {
@@ -216,16 +241,6 @@ int main(int argc, char *argv[]) {
         printf("restarted %s (exit %d)\n", svc_list[i], rc);
     }
 
-    /* Read new version from /etc/gateway-version */
-    char version[256] = "unknown";
-    FILE *fp = fopen("/etc/gateway-version", "r");
-    if (fp) {
-        if (fgets(version, sizeof(version), fp)) {
-            char *nl = strchr(version, '\n');
-            if (nl) *nl = '\0';
-        }
-        fclose(fp);
-    }
     printf("VERSION:%s\n", version);
 
     return 0;
