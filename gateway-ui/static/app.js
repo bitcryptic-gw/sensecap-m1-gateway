@@ -16,6 +16,7 @@ const state = {
   otaCountdown:    null,
   powerAction:     null,
   powerTimer:      null,
+  cachedVersion:   null,
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -684,42 +685,46 @@ async function applyTailscaleSsh(enabled) {
 
 // ── Settings — OTA Updates ──────────────────────────────────────────────────
 
+function renderOtaCard(d) {
+  const localEl = document.getElementById('ota-local-ver');
+  if (d.local && d.local !== 'unknown') {
+    localEl.textContent = fmtVersion(d.local);
+    localEl.className = 'kv-value';
+  } else {
+    localEl.textContent = 'Unknown';
+    localEl.className = 'kv-value dim';
+  }
+  if (d.update_available) {
+    document.getElementById('ota-status').classList.add('hidden');
+    document.getElementById('ota-update-available').classList.remove('hidden');
+    document.getElementById('ota-version-compare').innerHTML =
+      `<span><span class="dim">${fmtVersion(d.local)}</span> <span style="color:var(--text-dim)">→</span> ` +
+      `<a href="${d.release_url || '#'}" target="_blank" rel="noopener" style="color:var(--cyan)">${d.latest}</a></span>`;
+    const notesWrap = document.getElementById('ota-release-notes-wrap');
+    if (d.release_notes) {
+      notesWrap.classList.remove('hidden');
+      const html = marked.parse(d.release_notes)
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+      document.getElementById('ota-release-notes').innerHTML = html;
+    } else {
+      notesWrap.classList.add('hidden');
+    }
+    checkOtaChanges();
+  } else {
+    document.getElementById('ota-status').classList.remove('hidden');
+    document.getElementById('ota-update-available').classList.add('hidden');
+    if (d.latest) {
+      showResult('ota-check-result', `Latest: ${d.latest} — up to date`, false);
+    }
+  }
+}
+
 async function loadOtaStatus() {
   try {
     const d = await api('/api/system/version');
-    const localEl = document.getElementById('ota-local-ver');
-    if (d.local && d.local !== 'unknown') {
-      localEl.textContent = fmtVersion(d.local);
-      localEl.className = 'kv-value';
-    } else {
-      localEl.textContent = 'Unknown';
-      localEl.className = 'kv-value dim';
-    }
-    if (d.update_available) {
-      document.getElementById('ota-status').classList.add('hidden');
-      document.getElementById('ota-update-available').classList.remove('hidden');
-      document.getElementById('ota-version-compare').innerHTML =
-        `<span><span class="dim">${fmtVersion(d.local)}</span> <span style="color:var(--text-dim)">→</span> ` +
-        `<a href="${d.release_url || '#'}" target="_blank" rel="noopener" style="color:var(--cyan)">${d.latest}</a></span>`;
-      const notesWrap = document.getElementById('ota-release-notes-wrap');
-      if (d.release_notes) {
-        notesWrap.classList.remove('hidden');
-        const html = marked.parse(d.release_notes)
-          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-          .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-        document.getElementById('ota-release-notes').innerHTML = html;
-      } else {
-        notesWrap.classList.add('hidden');
-      }
-      // Fetch changes for the checkboxes
-      await checkOtaChanges();
-    } else {
-      document.getElementById('ota-status').classList.remove('hidden');
-      document.getElementById('ota-update-available').classList.add('hidden');
-      if (d.latest) {
-        showResult('ota-check-result', `Latest: ${d.latest} — up to date`, false);
-      }
-    }
+    state.cachedVersion = d;
+    renderOtaCard(d);
   } catch (e) {
     if (e.message !== 'unauthorized') showResult('ota-check-result', e.message, true);
   }
@@ -901,6 +906,10 @@ async function loadSettings() {
     const s = await api('/api/settings');
     document.getElementById('port-input').value = s.port;
   } catch (e) {}
+  // Render from cache immediately, then refresh
+  if (state.cachedVersion) {
+    renderOtaCard(state.cachedVersion);
+  }
   loadOtaStatus();
   loadNtfyConfig();
 }
@@ -964,6 +973,7 @@ async function setHeaderInfo() {
   try {
     document.getElementById('header-name').textContent = 'BitCryptic™ OS';
     const ver = await api('/api/system/version');
+    state.cachedVersion = ver;
     const headerVer = document.getElementById('header-version');
     const badge = document.getElementById('header-update-badge');
     if (ver.local && ver.local !== 'unknown') {
@@ -977,6 +987,11 @@ async function setHeaderInfo() {
     } else {
       headerVer.style.display = 'none';
       badge.classList.add('hidden');
+    }
+    // Re-render OTA card if settings tab is visible
+    const settingsPanel = document.getElementById('tab-settings');
+    if (settingsPanel && !settingsPanel.classList.contains('hidden')) {
+      renderOtaCard(ver);
     }
   } catch {}
 }
