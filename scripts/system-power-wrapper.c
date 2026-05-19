@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <pwd.h>
+#include <grp.h>
 
 int main(int argc, char *argv[]) {
     struct passwd *pw = getpwnam("gateway-ui");
