@@ -748,3 +748,47 @@ code.addr {
   text-align: center;
 }
 .ota-reload-msg.hidden { display: none; }
+
+/* ── NTFY Notifications ───────────────────────────────────────────────────── */
+.ntfy-checks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .4rem 1rem;
+  margin-top: .5rem;
+}
+.ntfy-check-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .85rem;
+  cursor: pointer;
+}
+.ntfy-check-row input[type="checkbox"] { accent-color: var(--blue); }
+
+/* ── System Power ─────────────────────────────────────────────────────────── */
+.confirm-cancel {
+  color: var(--text-dim);
+  font-size: .85rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.confirm-cancel:hover { color: var(--text); }
+
+#power-confirm-text {
+  font-weight: 600;
+  cursor: pointer;
+}
+#power-confirm-text:hover { opacity: .85; }
+
+.power-timer {
+  font-size: .78rem;
+  color: var(--text-dim);
+}
+
+.power-state-msg {
+  font-size: .9rem;
+  color: var(--text);
+  text-align: center;
+  padding: .75rem 0;
+}

@@ -8,6 +8,7 @@ import secrets
 import socket
 import subprocess
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -54,6 +55,15 @@ _SYSCTL_W     = "/usr/sbin/sysctl"
 
 BAND_RE = re.compile(r"^[a-z][a-z0-9_]{1,30}$")
 WRAPPER_BIN = "/usr/local/bin/wingbits-setup-wrapper"
+
+NTFY_PATH = Path("/etc/gateway-ui/ntfy.json")
+POWER_WRAPPER = "/usr/local/bin/system-power-wrapper"
+NTFY_URL_RE = re.compile(r"^https?://")
+NTFY_TOPIC_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+ALLOWED_ALERT_KEYS = {
+    "update_available", "helium_fault", "wingbits_fault",
+    "cpu_temp", "ram", "storage", "reboot", "shutdown",
+}
 WINGBITS_URL_RE = re.compile(r"^https://gitlab\.com/wingbits/config/-/raw/")
 SHELL_META_RE = re.compile(r"[;&|`$()<>\n\r]")
 _wingbits_running = False
@@ -96,7 +106,18 @@ TOKEN: str   = _load_token()
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Gateway UI", docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def _app_lifespan(app: FastAPI):
+    task = asyncio.create_task(_ntfy_notifier())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="Gateway UI", docs_url=None, redoc_url=None, lifespan=_app_lifespan)
 
 
 @app.middleware("http")
@@ -252,6 +273,52 @@ def _write_config(updates: dict) -> None:
 async def _restart_after(unit: str, delay: float = 0.8) -> None:
     await asyncio.sleep(delay)
     _run(["sudo", _SYSTEMCTL, "restart", unit])
+
+
+# ── NTFY ───────────────────────────────────────────────────────────────────────
+
+def _load_ntfy_config() -> dict:
+    if not NTFY_PATH.exists():
+        return {}
+    try:
+        return json.loads(NTFY_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+async def send_ntfy(title: str, message: str, priority: str = "default", tags: list[str] | None = None) -> bool:
+    config = _load_ntfy_config()
+    server = config.get("server", "")
+    topic = config.get("topic", "")
+    token = config.get("token", "")
+
+    if not server or not topic:
+        return False
+
+    url = f"{server.rstrip('/')}/{topic}"
+    headers = {
+        "Title": title,
+        "Priority": priority,
+        "Tags": ",".join(tags) if tags else "",
+        "Content-Type": "text/plain",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.post(url, content=message, headers=headers)
+            r.raise_for_status()
+        return True
+    except Exception as exc:
+        logging.error("NTFY send failed: %s", exc)
+        return False
+
+
+def _current_version() -> str:
+    if GW_VERSION.exists():
+        return GW_VERSION.read_text().strip() or "unknown"
+    return "unknown"
 
 
 # ── Dashboard / System Info ──────────────────────────────────────────────────
@@ -772,12 +839,6 @@ def _map_changed_files(changed: list[str]) -> tuple[list[dict], list[str]]:
     return list(groups.values()), boot_changes
 
 
-def _current_version() -> str:
-    if GW_VERSION.exists():
-        return GW_VERSION.read_text().strip() or "unknown"
-    return "unknown"
-
-
 @app.get("/api/system/ota/changes")
 async def api_system_ota_changes(_: Auth):
     if not Path(_OTA_WRAPPER).exists():
@@ -870,6 +931,353 @@ async def api_system_ota_update(_: Auth, request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ── System / Power ─────────────────────────────────────────────────────────────
+
+@app.post("/api/system/reboot")
+async def api_system_reboot(_: Auth):
+    if not Path(POWER_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="system-power-wrapper not installed")
+
+    config = _load_ntfy_config()
+    if config.get("server") and config.get("topic") and "reboot" in config.get("enabled_alerts", []):
+        await send_ntfy(
+            "Gateway Rebooting",
+            f"{socket.gethostname()} is rebooting. Triggered via web UI.",
+            "default",
+            ["arrows_counterclockwise", "sensecap"],
+        )
+
+    rc, _, err = await _run_async([POWER_WRAPPER, "reboot"])
+    if rc != 0:
+        raise HTTPException(status_code=500, detail=err or "reboot failed")
+    return {"ok": True}
+
+
+@app.post("/api/system/shutdown")
+async def api_system_shutdown(_: Auth):
+    if not Path(POWER_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="system-power-wrapper not installed")
+
+    config = _load_ntfy_config()
+    if config.get("server") and config.get("topic") and "shutdown" in config.get("enabled_alerts", []):
+        await send_ntfy(
+            "Gateway Shutting Down",
+            f"{socket.gethostname()} is shutting down. Triggered via web UI.",
+            "high",
+            ["stop_sign", "sensecap"],
+        )
+
+    rc, _, err = await _run_async([POWER_WRAPPER, "poweroff"])
+    if rc != 0:
+        raise HTTPException(status_code=500, detail=err or "shutdown failed")
+    return {"ok": True}
+
+
+# ── Notifications / NTFY ──────────────────────────────────────────────────────
+
+@app.get("/api/notifications/config")
+def api_ntfy_config_get(_: Auth):
+    cfg = _load_ntfy_config()
+    has_token = bool(cfg.get("token"))
+    return {
+        "server": cfg.get("server", ""),
+        "topic": cfg.get("topic", ""),
+        "token": "",
+        "token_set": has_token,
+        "enabled_alerts": cfg.get("enabled_alerts", list(ALLOWED_ALERT_KEYS)),
+    }
+
+
+@app.post("/api/notifications/config")
+async def api_ntfy_config_set(_: Auth, request: Request):
+    body = await request.json()
+    server = str(body.get("server", "")).strip()
+    topic = str(body.get("topic", "")).strip()
+    token = str(body.get("token", ""))
+    enabled_alerts = body.get("enabled_alerts", list(ALLOWED_ALERT_KEYS))
+
+    if not server:
+        raise HTTPException(status_code=422, detail="server is required")
+    if not NTFY_URL_RE.match(server):
+        raise HTTPException(status_code=422, detail="server must be a valid HTTP/HTTPS URL")
+    if not topic:
+        raise HTTPException(status_code=422, detail="topic is required")
+    if not NTFY_TOPIC_RE.match(topic):
+        raise HTTPException(status_code=422, detail="topic must be alphanumeric with hyphens/underscores")
+    if not isinstance(enabled_alerts, list):
+        raise HTTPException(status_code=422, detail="enabled_alerts must be a list")
+    invalid = [k for k in enabled_alerts if k not in ALLOWED_ALERT_KEYS]
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"unknown alert keys: {invalid}")
+
+    # If token is empty string and we have a saved token, keep the existing one
+    current = _load_ntfy_config()
+    if not token and current.get("token"):
+        token = current["token"]
+
+    NTFY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    NTFY_PATH.write_text(json.dumps({
+        "server": server,
+        "topic": topic,
+        "token": token,
+        "enabled_alerts": enabled_alerts,
+    }, indent=2) + "\n")
+    # Ensure permissions
+    try:
+        NTFY_PATH.chmod(0o640)
+    except OSError:
+        pass
+
+    return {"ok": True}
+
+
+@app.post("/api/notifications/test")
+async def api_ntfy_test(_: Auth):
+    config = _load_ntfy_config()
+    if not config.get("server") or not config.get("topic"):
+        raise HTTPException(status_code=400, detail="NTFY not configured — set server and topic first")
+
+    ok = await send_ntfy(
+        "Gateway Test Notification",
+        f"NTFY is configured correctly for {socket.gethostname()}.",
+        "default",
+        ["white_check_mark", "sensecap"],
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to send test notification — check server/topic")
+    return {"ok": True}
+
+
+# ── NTFY background notifier ──────────────────────────────────────────────────
+
+_ntfy_state: dict = {
+    "helium_fault": None,
+    "wingbits_fault": None,
+    "cpu_temp_alert": None,
+    "ram_alert": None,
+    "storage_alert": None,
+    "last_update_version": None,
+}
+_ntfy_first_run: bool = True
+
+
+async def _ntfy_notifier():
+    global _ntfy_first_run, _ntfy_state
+
+    while True:
+        try:
+            config = _load_ntfy_config()
+            server = config.get("server", "")
+            topic = config.get("topic", "")
+            enabled_alerts = set(config.get("enabled_alerts", []))
+
+            if not server or not topic:
+                await asyncio.sleep(60)
+                continue
+
+            hostname = socket.gethostname()
+
+            # ── Gather sysinfo ─────────────────────────────────────────────
+            cpu_raw = None
+            try:
+                raw = int(Path("/sys/class/thermal/thermal_zone0/temp").read_text().strip())
+                cpu_raw = round(raw / 1000, 1)
+            except Exception:
+                pass
+
+            _, mem_out, _ = _run(["free", "-m"])
+            mem_pct = None
+            m = re.search(r"^Mem:\s+(\d+)\s+(\d+)", mem_out or "", re.MULTILINE)
+            if m:
+                total, used = int(m.group(1)), int(m.group(2))
+                if total > 0:
+                    mem_pct = round((used / total) * 100)
+
+            _, disk_out, _ = _run(["df", "-h", "/opt"])
+            disk_pct = None
+            lines = (disk_out or "").splitlines()
+            if len(lines) >= 2:
+                parts = lines[1].split()
+                if len(parts) >= 5:
+                    try:
+                        disk_pct = int(parts[4].rstrip("%"))
+                    except (ValueError, TypeError):
+                        pass
+
+            # ── Group statuses ────────────────────────────────────────────
+            helium_status = _service_group_status("helium")
+            wingbits_status = _service_group_status("wingbits")
+
+            # ── Version check ─────────────────────────────────────────────
+            update_available = False
+            latest_version = None
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    r = await client.get(GITHUB_API)
+                    if r.status_code == 200:
+                        data = r.json()
+                        tag = data.get("tag_name", "")
+                        latest_ver = tag.lstrip("v") if tag else ""
+                        if latest_ver:
+                            latest_version = tag
+                            local = _current_version()
+                            if local and local != "unknown":
+                                normalised = _normalise_version(local)
+                                try:
+                                    local_parts = tuple(int(p) for p in normalised.lstrip("v").split("."))
+                                    latest_parts = tuple(int(p) for p in latest_ver.split("."))
+                                    max_len = max(len(local_parts), len(latest_parts))
+                                    update_available = (latest_parts + (0,) * (max_len - len(latest_parts))) > (local_parts + (0,) * (max_len - len(local_parts)))
+                                except (ValueError, AttributeError):
+                                    pass
+            except Exception:
+                pass
+
+            # ── First run: set baseline, no alerts ────────────────────────
+            if _ntfy_first_run:
+                if update_available and latest_version:
+                    _ntfy_state["last_update_version"] = latest_version
+                if cpu_raw is not None:
+                    _ntfy_state["cpu_temp_alert"] = cpu_raw >= 75.0
+                if mem_pct is not None:
+                    _ntfy_state["ram_alert"] = mem_pct >= 90
+                if disk_pct is not None:
+                    _ntfy_state["storage_alert"] = disk_pct >= 90
+
+                hgs = helium_status.get("group_state")
+                _ntfy_state["helium_fault"] = (hgs == "fault")
+
+                wgs = wingbits_status.get("group_state")
+                if wgs != "optional":
+                    _ntfy_state["wingbits_fault"] = (wgs == "fault")
+
+                _ntfy_first_run = False
+                await asyncio.sleep(60)
+                continue
+
+            # ── Check: update_available ───────────────────────────────────
+            if "update_available" in enabled_alerts and update_available and latest_version:
+                if latest_version != _ntfy_state["last_update_version"]:
+                    local = _current_version()
+                    await send_ntfy(
+                        "Gateway Update Available",
+                        f"Version {latest_version} is available. Current: {local}. Open Settings to update.",
+                        "default",
+                        ["arrow_up", "sensecap"],
+                    )
+                    _ntfy_state["last_update_version"] = latest_version
+
+            # ── Check: helium_fault ───────────────────────────────────────
+            if "helium_fault" in enabled_alerts:
+                current_hf = (helium_status.get("group_state") == "fault")
+                if current_hf != _ntfy_state["helium_fault"]:
+                    if current_hf:
+                        await send_ntfy(
+                            "Helium Offline",
+                            f"Helium services are not running on {hostname}.",
+                            "high",
+                            ["red_circle", "helium"],
+                        )
+                    else:
+                        await send_ntfy(
+                            "Helium Online",
+                            f"Helium services restored on {hostname}.",
+                            "default",
+                            ["green_circle", "helium"],
+                        )
+                    _ntfy_state["helium_fault"] = current_hf
+
+            # ── Check: wingbits_fault ─────────────────────────────────────
+            if "wingbits_fault" in enabled_alerts:
+                wgs = wingbits_status.get("group_state")
+                if wgs != "optional":
+                    current_wf = (wgs == "fault")
+                    if current_wf != _ntfy_state["wingbits_fault"]:
+                        if current_wf:
+                            await send_ntfy(
+                                "Wingbits Offline",
+                                f"Wingbits services are not running on {hostname}.",
+                                "high",
+                                ["red_circle", "wingbits"],
+                            )
+                        else:
+                            await send_ntfy(
+                                "Wingbits Online",
+                                f"Wingbits services restored on {hostname}.",
+                                "default",
+                                ["green_circle", "wingbits"],
+                            )
+                        _ntfy_state["wingbits_fault"] = current_wf
+
+            # ── Check: cpu_temp ───────────────────────────────────────────
+            if "cpu_temp" in enabled_alerts and cpu_raw is not None:
+                current_cpu_alert = cpu_raw >= 75.0
+                recovered = cpu_raw < 70.0
+                if current_cpu_alert and _ntfy_state["cpu_temp_alert"] is not True:
+                    await send_ntfy(
+                        "CPU Temperature Alert",
+                        f"CPU temp is {cpu_raw}°C on {hostname} (threshold: 75°C).",
+                        "high",
+                        ["thermometer", "sensecap"],
+                    )
+                    _ntfy_state["cpu_temp_alert"] = True
+                elif recovered and _ntfy_state["cpu_temp_alert"] is not False:
+                    await send_ntfy(
+                        "CPU Temperature Normal",
+                        f"CPU temp has recovered to {cpu_raw}°C on {hostname}.",
+                        "default",
+                        ["thermometer", "sensecap"],
+                    )
+                    _ntfy_state["cpu_temp_alert"] = False
+
+            # ── Check: ram ────────────────────────────────────────────────
+            if "ram" in enabled_alerts and mem_pct is not None:
+                current_ram_alert = mem_pct >= 90
+                recovered = mem_pct < 85
+                if current_ram_alert and _ntfy_state["ram_alert"] is not True:
+                    await send_ntfy(
+                        "Memory Alert",
+                        f"RAM usage is {mem_pct}% on {hostname} (threshold: 90%).",
+                        "high",
+                        ["warning", "sensecap"],
+                    )
+                    _ntfy_state["ram_alert"] = True
+                elif recovered and _ntfy_state["ram_alert"] is not False:
+                    await send_ntfy(
+                        "Memory Normal",
+                        f"RAM usage has recovered to {mem_pct}% on {hostname}.",
+                        "default",
+                        ["white_check_mark", "sensecap"],
+                    )
+                    _ntfy_state["ram_alert"] = False
+
+            # ── Check: storage ────────────────────────────────────────────
+            if "storage" in enabled_alerts and disk_pct is not None:
+                current_disk_alert = disk_pct >= 90
+                recovered = disk_pct < 85
+                if current_disk_alert and _ntfy_state["storage_alert"] is not True:
+                    await send_ntfy(
+                        "Storage Alert",
+                        f"Disk usage is {disk_pct}% on {hostname} (threshold: 90%).",
+                        "high",
+                        ["warning", "sensecap"],
+                    )
+                    _ntfy_state["storage_alert"] = True
+                elif recovered and _ntfy_state["storage_alert"] is not False:
+                    await send_ntfy(
+                        "Storage Normal",
+                        f"Disk usage has recovered to {disk_pct}% on {hostname}.",
+                        "default",
+                        ["white_check_mark", "sensecap"],
+                    )
+                    _ntfy_state["storage_alert"] = False
+
+        except Exception as exc:
+            logging.error("NTFY notifier error: %s", exc)
+
+        await asyncio.sleep(60)
 
 
 # ── Logs ─────────────────────────────────────────────────────────────────────

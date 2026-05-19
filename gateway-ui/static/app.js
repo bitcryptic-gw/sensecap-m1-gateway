@@ -14,6 +14,8 @@ const state = {
   otaChanges:      null,
   otaAbort:        null,
   otaCountdown:    null,
+  powerAction:     null,
+  powerTimer:      null,
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -900,6 +902,7 @@ async function loadSettings() {
     document.getElementById('port-input').value = s.port;
   } catch (e) {}
   loadOtaStatus();
+  loadNtfyConfig();
 }
 
 async function savePort() {
@@ -981,6 +984,158 @@ async function setHeaderInfo() {
 async function startVersionPoll() {
   await setHeaderInfo();
   state.verInterval = setInterval(setHeaderInfo, 60_000);
+}
+
+// ── Settings — System Power ──────────────────────────────────────────────────
+
+function powerReset() {
+  clearTimeout(state.powerTimer);
+  state.powerTimer = null;
+  state.powerAction = null;
+  document.getElementById('power-initial').classList.remove('hidden');
+  document.getElementById('power-confirm').classList.add('hidden');
+  document.getElementById('power-rebooting').classList.add('hidden');
+  document.getElementById('power-shutdown-msg').classList.add('hidden');
+  document.getElementById('btn-power-reboot').disabled = false;
+  document.getElementById('btn-power-shutdown').disabled = false;
+}
+
+function powerStartConfirm(action) {
+  state.powerAction = action;
+  document.getElementById('power-initial').classList.add('hidden');
+  const confirmEl = document.getElementById('power-confirm');
+  const confirmText = document.getElementById('power-confirm-text');
+  confirmText.textContent = action === 'reboot' ? 'Confirm Reboot?' : 'Confirm Shutdown?';
+  confirmEl.className = 'action-row';
+  document.getElementById('btn-power-reboot').disabled = true;
+  document.getElementById('btn-power-shutdown').disabled = true;
+
+  let sec = 10;
+  document.getElementById('power-timer').textContent = `(auto-cancel in ${sec}s)`;
+  state.powerTimer = setInterval(() => {
+    sec--;
+    document.getElementById('power-timer').textContent = `(auto-cancel in ${sec}s)`;
+    if (sec <= 0) powerReset();
+  }, 1000);
+}
+
+async function powerExecute(action) {
+  powerReset();
+  document.getElementById('power-initial').classList.add('hidden');
+  if (action === 'reboot') {
+    const rebootingEl = document.getElementById('power-rebooting');
+    rebootingEl.classList.remove('hidden');
+    // Poll sysinfo to detect reconnect
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch('/api/sysinfo', {
+          headers: { Authorization: `Bearer ${state.token}` },
+        });
+        if (r.ok) {
+          clearInterval(poll);
+          location.reload();
+        }
+      } catch {}
+    }, 3000);
+  } else {
+    document.getElementById('power-shutdown-msg').classList.remove('hidden');
+    return;
+  }
+
+  try {
+    await api(`/api/system/${action}`, 'POST');
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      document.getElementById('power-rebooting').classList.add('hidden');
+      document.getElementById('power-initial').classList.remove('hidden');
+      alert(`Power action failed: ${e.message}`);
+    }
+  }
+}
+
+// ── Settings — NTFY Notifications ─────────────────────────────────────────────
+
+async function loadNtfyConfig() {
+  try {
+    const cfg = await api('/api/notifications/config');
+    document.getElementById('ntfy-server').value = cfg.server || '';
+    document.getElementById('ntfy-topic').value = cfg.topic || '';
+    const tokenInput = document.getElementById('ntfy-token');
+    if (cfg.token_set) {
+      tokenInput.placeholder = '●●●●●●●● (set)';
+      tokenInput.value = '';
+      document.getElementById('btn-ntfy-clear-token').classList.remove('hidden');
+    } else {
+      tokenInput.placeholder = 'Leave blank for public topics';
+      document.getElementById('btn-ntfy-clear-token').classList.add('hidden');
+    }
+    // Checkboxes
+    document.querySelectorAll('.ntfy-alert-check').forEach(cb => {
+      cb.checked = (cfg.enabled_alerts || []).includes(cb.dataset.key);
+    });
+    // Status pill
+    const pill = document.getElementById('ntfy-status-pill');
+    if (cfg.server && cfg.topic) {
+      pill.textContent = '● Configured';
+      pill.className = 'badge badge-green';
+      document.getElementById('btn-ntfy-test').disabled = false;
+    } else {
+      pill.textContent = '○ Not configured';
+      pill.className = 'badge badge-dim';
+      document.getElementById('btn-ntfy-test').disabled = true;
+    }
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('ntfy-save-result', 'Failed to load config', true);
+  }
+}
+
+async function saveNtfyConfig() {
+  const server = document.getElementById('ntfy-server').value.trim();
+  const topic = document.getElementById('ntfy-topic').value.trim();
+  const token = document.getElementById('ntfy-token').value;
+  const enabled_alerts = Array.from(document.querySelectorAll('.ntfy-alert-check:checked')).map(cb => cb.dataset.key);
+  try {
+    await api('/api/notifications/config', 'POST', { server, topic, token, enabled_alerts });
+    showResult('ntfy-save-result', 'Saved ✓', false);
+    loadNtfyConfig();
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('ntfy-save-result', e.message, true);
+  }
+}
+
+async function saveNtfyAlerts() {
+  const server = document.getElementById('ntfy-server').value.trim();
+  const topic = document.getElementById('ntfy-topic').value.trim();
+  const enabled_alerts = Array.from(document.querySelectorAll('.ntfy-alert-check:checked')).map(cb => cb.dataset.key);
+  try {
+    // Send without touching token — server and topic are already loaded from GET
+    await api('/api/notifications/config', 'POST', { server, topic, token: '', enabled_alerts });
+    showResult('ntfy-alerts-result', 'Alerts saved ✓', false);
+    loadNtfyConfig();
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('ntfy-alerts-result', e.message, true);
+  }
+}
+
+async function clearNtfyToken() {
+  document.getElementById('ntfy-token').value = '';
+  document.getElementById('ntfy-token').placeholder = 'Leave blank for public topics';
+  document.getElementById('btn-ntfy-clear-token').classList.add('hidden');
+}
+
+async function sendNtfyTest() {
+  const btn = document.getElementById('btn-ntfy-test');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    await api('/api/notifications/test', 'POST');
+    showResult('ntfy-test-result', '✓ Sent', false);
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('ntfy-test-result', '✗ Failed — check server/topic', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Test Notification';
+  }
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -1130,8 +1285,21 @@ function wireEvents() {
   // Header update badge — click navigates to Settings tab, triggers OTA load
   document.getElementById('header-update-badge').addEventListener('click', function() {
     switchTab('settings');
-    // OTA section should already be visible via loadSettings -> loadOtaStatus
   });
+
+  // Settings — System Power
+  document.getElementById('btn-power-reboot').addEventListener('click', () => powerStartConfirm('reboot'));
+  document.getElementById('btn-power-shutdown').addEventListener('click', () => powerStartConfirm('shutdown'));
+  document.getElementById('power-cancel').addEventListener('click', e => { e.preventDefault(); powerReset(); });
+  document.getElementById('power-confirm-text').addEventListener('click', () => {
+    if (state.powerAction) powerExecute(state.powerAction);
+  });
+
+  // Settings — NTFY
+  document.getElementById('btn-ntfy-save').addEventListener('click', saveNtfyConfig);
+  document.getElementById('btn-ntfy-save-alerts').addEventListener('click', saveNtfyAlerts);
+  document.getElementById('btn-ntfy-clear-token').addEventListener('click', clearNtfyToken);
+  document.getElementById('btn-ntfy-test').addEventListener('click', sendNtfyTest);
 
   // Settings — auth
   document.getElementById('btn-reveal-token').addEventListener('click', revealToken);

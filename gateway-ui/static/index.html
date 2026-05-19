@@ -330,6 +330,81 @@
           </div>
         </div>
 
+        <div class="card" id="system-power-card">
+          <div class="card-header">System Power</div>
+          <div class="card-body" id="power-body">
+            <div id="power-initial" class="action-row">
+              <button id="btn-power-reboot" class="btn btn-amber">Reboot</button>
+              <button id="btn-power-shutdown" class="btn btn-danger">Shutdown</button>
+            </div>
+            <div id="power-confirm" class="action-row hidden">
+              <span id="power-confirm-text"></span>
+              <a href="#" id="power-cancel" class="confirm-cancel">Cancel</a>
+              <span id="power-timer" class="power-timer"></span>
+            </div>
+            <div id="power-rebooting" class="hidden power-state-msg">
+              Rebooting… reconnecting
+              <div class="spinner" style="margin:0.5rem 0 0 0"></div>
+            </div>
+            <div id="power-shutdown-msg" class="hidden power-state-msg">
+              Device is shutting down. Power must be restored manually.
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="ntfy-card">
+          <div class="card-header">
+            <span>NTFY Notifications</span>
+            <span id="ntfy-status-pill" class="badge badge-dim">○ Not configured</span>
+          </div>
+          <div class="card-body">
+            <p class="hint" id="ntfy-intro">Receive alerts via NTFY when services go offline, resources hit thresholds, or power actions are triggered.</p>
+
+            <div class="field-group">
+              <label class="field-label" for="ntfy-server">NTFY Server URL</label>
+              <input type="text" id="ntfy-server" class="wingbits-input" placeholder="https://ntfy.sh" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="field-group mt">
+              <label class="field-label" for="ntfy-topic">Topic</label>
+              <input type="text" id="ntfy-topic" class="wingbits-input" placeholder="my-gateway-alerts" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="field-group mt">
+              <label class="field-label" for="ntfy-token">Access Token <span class="dim">(optional)</span></label>
+              <div class="input-row">
+                <input type="password" id="ntfy-token" class="wingbits-input" style="flex:1" placeholder="Leave blank for public topics" autocomplete="off" spellcheck="false">
+                <button id="btn-ntfy-clear-token" class="btn btn-sm hidden">Clear</button>
+              </div>
+            </div>
+            <div class="action-row">
+              <button id="btn-ntfy-save" class="btn btn-primary">Save</button>
+              <span id="ntfy-save-result" class="result-msg"></span>
+            </div>
+
+            <div class="ota-section-divider"></div>
+            <p class="field-label">Alert notifications</p>
+            <div class="ntfy-checks" id="ntfy-checks">
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="update_available"> <span>Update available</span></label>
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="helium_fault"> <span>Helium offline</span></label>
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="wingbits_fault"> <span>Wingbits offline</span></label>
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="cpu_temp"> <span>CPU temperature</span></label>
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="ram"> <span>RAM usage</span></label>
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="storage"> <span>Storage usage</span></label>
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="reboot"> <span>Reboot triggered</span></label>
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="shutdown"> <span>Shutdown triggered</span></label>
+            </div>
+            <div class="action-row">
+              <button id="btn-ntfy-save-alerts" class="btn btn-primary">Save Alerts</button>
+              <span id="ntfy-alerts-result" class="result-msg"></span>
+            </div>
+
+            <div class="ota-section-divider"></div>
+            <div class="action-row">
+              <button id="btn-ntfy-test" class="btn btn-sm" disabled>Send Test Notification</button>
+              <span id="ntfy-test-result" class="result-msg"></span>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header">Authentication</div>
           <div class="card-body">

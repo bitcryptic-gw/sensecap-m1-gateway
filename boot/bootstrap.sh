@@ -182,7 +182,41 @@ else
     warn "gcc not found — ota-update-wrapper omitted (install build-essential and re-run)"
 fi
 
-# ── 9. Post-provisioning summary ─────────────────────────────────────────────
+# ── 9. System power wrapper ─────────────────────────────────────────────────
+
+echo ""
+echo "--- System Power Wrapper ---"
+if command -v gcc &>/dev/null; then
+    gcc -O2 -Wall -o /usr/local/bin/system-power-wrapper \
+        "${REPO_DIR}/scripts/system-power-wrapper.c"
+    chown root:root /usr/local/bin/system-power-wrapper
+    chmod 4755 /usr/local/bin/system-power-wrapper
+    green "system-power-wrapper installed (setuid root)"
+else
+    warn "gcc not found — system-power-wrapper omitted (install build-essential and re-run)"
+fi
+
+# ── 10. NTFY config ─────────────────────────────────────────────────────────
+
+echo ""
+echo "--- NTFY Config ---"
+NTFY_DIR="/etc/gateway-ui"
+if [ ! -f "${NTFY_DIR}/ntfy.json" ]; then
+    mkdir -p "${NTFY_DIR}"
+    echo '{}' > "${NTFY_DIR}/ntfy.json"
+    # Set ownership to root:gateway-ui (mode 640) so gateway-ui can read it
+    if getent group gateway-ui &>/dev/null; then
+        chown root:gateway-ui "${NTFY_DIR}/ntfy.json"
+    else
+        chown root:root "${NTFY_DIR}/ntfy.json"
+    fi
+    chmod 640 "${NTFY_DIR}/ntfy.json"
+    green "Created /etc/gateway-ui/ntfy.json"
+else
+    green "ntfy.json already exists"
+fi
+
+# ── 11. Post-provisioning summary ─────────────────────────────────────────────
 
 echo ""
 echo "============================================"
