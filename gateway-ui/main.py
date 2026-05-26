@@ -600,7 +600,7 @@ def api_network_interfaces(_: Auth):
         if iface == "wlan0":
             rc2, ssid_out, _ = _run(["iwgetid", "-r", iface])
             info["ssid"] = ssid_out.strip() if rc2 == 0 else "N/A"
-            rc3, nm_out, _ = _run(["/usr/bin/nmcli", "-t", "-f", "WIFI", "radio", "wifi"])
+            rc3, nm_out, _ = _run(["/usr/bin/nmcli", "radio", "wifi"])
             if rc3 == 0:
                 info["wifi_enabled"] = nm_out.strip().lower() == "enabled"
             else:
