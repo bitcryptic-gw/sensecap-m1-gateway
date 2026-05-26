@@ -109,6 +109,8 @@ function switchTab(name) {
     state.wingbitsAbort = null;
   }
 
+  sessionStorage.setItem('activeTab', name);
+
   if (name === 'dashboard')     startDashboardRefresh();
   if (name === 'applications')  loadApplications();
   if (name === 'network')       startNetworkRefresh();
@@ -749,6 +751,21 @@ async function loadOtaStatus() {
   }
 }
 
+async function viewOtaLog() {
+  const el = document.getElementById('ota-log-display');
+  try {
+    const r = await fetch('/api/system/ota/log', {
+      headers: { Authorization: `Bearer ${state.token}` },
+    });
+    const text = await r.text();
+    el.textContent = text || '(no OTA log yet)';
+    el.classList.remove('hidden');
+  } catch (e) {
+    el.textContent = 'Error: ' + e.message;
+    el.classList.remove('hidden');
+  }
+}
+
 async function checkOtaChanges() {
   try {
     const d = await api('/api/system/ota/changes');
@@ -1347,6 +1364,7 @@ function wireEvents() {
   });
   document.getElementById('ota-service-checks').addEventListener('change', updateOtaConfirmBtn);
   document.getElementById('btn-ota-update').addEventListener('click', runOtaUpdate);
+  document.getElementById('btn-ota-view-log').addEventListener('click', viewOtaLog);
 
   // Header update badge — click navigates to Settings tab, triggers OTA load
   document.getElementById('header-update-badge').addEventListener('click', function() {
@@ -1376,7 +1394,8 @@ function wireEvents() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 function initApp() {
-  switchTab('dashboard');
+  const savedTab = sessionStorage.getItem('activeTab') || 'dashboard';
+  switchTab(savedTab);
 }
 
 async function init() {

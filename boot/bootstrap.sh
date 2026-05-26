@@ -182,6 +182,13 @@ fi
 # ── 9. Gateway UI config files ─────────────────────────────────────────────────────────
 
 echo ""
+echo "--- OTA Log File ---"
+touch /var/log/gateway-ota.log
+chown gateway-ui:gateway-ui /var/log/gateway-ota.log
+chmod 640 /var/log/gateway-ota.log
+green "Created /var/log/gateway-ota.log"
+
+echo ""
 echo "--- NTFY Config ---"
 NTFY_DIR="/etc/gateway-ui"
 if [ ! -f "${NTFY_DIR}/ntfy.json" ]; then

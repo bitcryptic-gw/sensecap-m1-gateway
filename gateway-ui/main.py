@@ -9,13 +9,14 @@ import socket
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
 import httpx
 import uvicorn
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ STATIC_DIR    = Path(__file__).parent / "static"
 GW_RELEASE       = Path("/etc/gateway-release")
 GW_VERSION       = Path("/etc/gateway-version")
 GITHUB_TOKEN_PATH = Path("/etc/gateway-ui/github-token")
+OTA_LOG = Path("/var/log/gateway-ota.log")
 
 SERVICE_GROUPS = {
     "helium":    {"label": "Helium",    "units": ["pktfwd.service", "gateway-rs.service"]},
@@ -105,6 +107,14 @@ def _load_token() -> str:
 CONFIG: dict = _load_config()
 TOKEN: str   = _load_token()
 
+def _load_gateway_version() -> str:
+    try:
+        return GW_VERSION.read_text().strip() or "dev"
+    except Exception:
+        return "dev"
+
+GATEWAY_VERSION: str = _load_gateway_version()
+
 # ── App ───────────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -146,7 +156,9 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    html = (STATIC_DIR / "index.html").read_text()
+    html = html.replace("{{ version }}", GATEWAY_VERSION)
+    return HTMLResponse(html)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -940,7 +952,10 @@ async def api_system_ota_update(_: Auth, request: Request):
 
     async def event_stream():
         global _ota_running
+        log_fh = None
         try:
+            log_fh = open(OTA_LOG, "a", buffering=1)
+            log_fh.write(f"\n=== OTA update started: {datetime.now(timezone.utc).isoformat()} ===\n")
             proc = await asyncio.create_subprocess_exec(
                 _OTA_WRAPPER, svc_arg,
                 stdout=asyncio.subprocess.PIPE,
@@ -952,15 +967,19 @@ async def api_system_ota_update(_: Auth, request: Request):
                 if not line:
                     break
                 decoded = line.decode("utf-8", errors="replace").rstrip()
+                log_fh.write(decoded + "\n")
                 if decoded.startswith("VERSION:"):
                     version = decoded[len("VERSION:"):]
                 yield f"data: {decoded}\n\n"
             exit_code = await proc.wait()
+            log_fh.write(f"=== OTA update finished: {datetime.now(timezone.utc).isoformat()} (exit {exit_code}) ===\n")
             event = {"exit_code": exit_code}
             if version:
                 event["version"] = version
             yield f"data: {json.dumps(event)}\n\n"
         finally:
+            if log_fh:
+                log_fh.close()
             _ota_running = False
 
     return StreamingResponse(
@@ -972,6 +991,20 @@ async def api_system_ota_update(_: Auth, request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.get("/api/system/ota/log")
+def api_system_ota_log(_: Auth):
+    if not OTA_LOG.exists():
+        return PlainTextResponse("")
+    size = OTA_LOG.stat().st_size
+    offset = max(0, size - 51200)
+    with open(OTA_LOG) as f:
+        f.seek(offset)
+        # Skip partial first line if seeking into the middle
+        if offset > 0:
+            f.readline()
+        return PlainTextResponse(f.read())
 
 
 # ── System / Power ─────────────────────────────────────────────────────────────

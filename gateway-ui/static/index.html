@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SenseCap M1 Gateway</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v={{ version }}">
 </head>
 <body>
 
@@ -333,6 +333,10 @@
                 <span id="ota-update-result" class="result-msg"></span>
               </div>
               <pre id="ota-output" class="ota-output hidden"></pre>
+              <div class="action-row">
+                <button id="btn-ota-view-log" class="btn btn-sm">View last OTA log</button>
+              </div>
+              <pre id="ota-log-display" class="ota-output hidden"></pre>
               <div id="ota-reload-msg" class="ota-reload-msg hidden">
                 Connection lost — gateway-ui is restarting.<br>
                 Reloading in <span id="ota-countdown">5</span> seconds…
@@ -444,6 +448,6 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ version }}"></script>
 </body>
 </html>
