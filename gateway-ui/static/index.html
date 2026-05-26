@@ -187,6 +187,17 @@
         <div class="card">
           <div class="card-header">Wireless (wlan0)</div>
           <div class="card-body" id="iface-wlan0"><div class="spinner"></div></div>
+          <div class="card-body toggle-row" id="wlan0-wifi-toggle-body">
+            <span>WiFi radio</span>
+            <label class="switch" aria-label="WiFi toggle">
+              <input type="checkbox" id="wifi-toggle">
+              <span class="slider"></span>
+            </label>
+            <span id="wifi-toggle-status" class="result-msg" style="min-width:5em"></span>
+          </div>
+          <div id="wlan0-wifi-warning" class="card-body hidden">
+            <span class="warn-text">⚠ Wired connection not detected — disabling WiFi may disconnect you</span>
+          </div>
         </div>
         <div class="card">
           <div class="card-header">Tailscale</div>

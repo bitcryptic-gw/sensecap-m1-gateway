@@ -196,7 +196,21 @@ else
     warn "gcc not found — system-power-wrapper omitted (install build-essential and re-run)"
 fi
 
-# ── 10. Gateway UI config files ─────────────────────────────────────────────────────────
+# ── 10. WiFi toggle wrapper ──────────────────────────────────────────────────
+
+echo ""
+echo "--- WiFi Toggle Wrapper ---"
+if command -v gcc &>/dev/null; then
+    gcc -O2 -Wall -o /usr/local/bin/wifi-toggle-wrapper \
+        "${REPO_DIR}/scripts/wifi-toggle-wrapper.c"
+    chown root:root /usr/local/bin/wifi-toggle-wrapper
+    chmod 4755 /usr/local/bin/wifi-toggle-wrapper
+    green "wifi-toggle-wrapper installed (setuid root)"
+else
+    warn "gcc not found — wifi-toggle-wrapper omitted (install build-essential and re-run)"
+fi
+
+# ── 11. Gateway UI config files ─────────────────────────────────────────────────────────
 
 echo ""
 echo "--- NTFY Config ---"
@@ -231,7 +245,7 @@ else
     green "github-token already exists"
 fi
 
-# ── 11. Post-provisioning summary ─────────────────────────────────────────────
+# ── 12. Post-provisioning summary ─────────────────────────────────────────────
 
 echo ""
 echo "============================================"

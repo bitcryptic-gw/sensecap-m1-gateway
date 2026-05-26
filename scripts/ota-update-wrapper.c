@@ -234,6 +234,9 @@ int main(int argc, char *argv[]) {
             {"wingbits-setup-wrapper",
              REPO_DIR "/scripts/wingbits-setup-wrapper.c",
              "/usr/local/bin/wingbits-setup-wrapper"},
+            {"wifi-toggle-wrapper",
+             REPO_DIR "/scripts/wifi-toggle-wrapper.c",
+             "/usr/local/bin/wifi-toggle-wrapper"},
             {NULL, NULL, NULL},
         };
         for (int i = 0; w_list[i].name; i++) {

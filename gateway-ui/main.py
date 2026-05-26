@@ -600,8 +600,33 @@ def api_network_interfaces(_: Auth):
         if iface == "wlan0":
             rc2, ssid_out, _ = _run(["iwgetid", "-r", iface])
             info["ssid"] = ssid_out.strip() if rc2 == 0 else "N/A"
+            rc3, nm_out, _ = _run(["/usr/bin/nmcli", "-t", "-f", "WIFI", "radio"])
+            if rc3 == 0:
+                info["wifi_enabled"] = nm_out.strip() == "enabled"
+            else:
+                info["wifi_enabled"] = None
         result[iface] = info
     return result
+
+
+# ── Network — WiFi Toggle ────────────────────────────────────────────────────
+
+WIFI_WRAPPER = "/usr/local/bin/wifi-toggle-wrapper"
+
+
+@app.post("/api/network/wifi")
+async def api_network_wifi(_: Auth, request: Request):
+    if not Path(WIFI_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="wifi-toggle-wrapper not installed")
+    body = await request.json()
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=422, detail="enabled must be a boolean")
+    action = "on" if enabled else "off"
+    rc, out, err = await _run_async([WIFI_WRAPPER, action], timeout=10)
+    if rc != 0:
+        raise HTTPException(status_code=500, detail=err or out.strip() or f"wifi toggle failed")
+    return {"wifi_enabled": enabled}
 
 
 # ── Network — Tailscale ──────────────────────────────────────────────────────

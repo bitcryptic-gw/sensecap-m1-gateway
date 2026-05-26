@@ -516,8 +516,9 @@ async function loadNetwork() {
 }
 
 function renderInterfaces(d) {
-  for (const name of ['eth0', 'wlan0']) {
-    const info = d[name] || {};
+  const eth0 = d.eth0 || {};
+  const wlan0 = d.wlan0 || {};
+  for (const [name, info] of [['eth0', eth0], ['wlan0', wlan0]]) {
     const el = document.getElementById(`iface-${name}`);
     const linkLabel = info.link === 'Up' ? '<span class="badge badge-green">● Up</span>'
       : info.link === 'N/A' ? '<span class="badge badge-dim">N/A</span>'
@@ -532,6 +533,41 @@ function renderInterfaces(d) {
       rows.splice(1, 0, ['SSID', info.ssid || 'N/A']);
     }
     el.innerHTML = kv(rows);
+  }
+  // WiFi toggle
+  const toggle = document.getElementById('wifi-toggle');
+  const statusEl = document.getElementById('wifi-toggle-status');
+  const warning = document.getElementById('wlan0-wifi-warning');
+  const eth0Up = eth0.link === 'Up';
+  warning.classList.toggle('hidden', eth0Up);
+  if (wlan0.wifi_enabled === null) {
+    toggle.disabled = true;
+    toggle.checked = false;
+    document.getElementById('wlan0-wifi-toggle-body').classList.add('dim');
+  } else {
+    toggle.disabled = false;
+    toggle.checked = wlan0.wifi_enabled;
+    document.getElementById('wlan0-wifi-toggle-body').classList.remove('dim');
+  }
+  statusEl.textContent = '';
+}
+
+async function toggleWifi(enabled) {
+  const toggle = document.getElementById('wifi-toggle');
+  const statusEl = document.getElementById('wifi-toggle-status');
+  toggle.disabled = true;
+  statusEl.textContent = 'Applying…';
+  try {
+    await api('/api/network/wifi', 'POST', { enabled });
+    statusEl.textContent = 'Done';
+    setTimeout(loadNetwork, 2000);
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      statusEl.textContent = e.message;
+      toggle.checked = !enabled;
+    }
+  } finally {
+    toggle.disabled = false;
   }
 }
 
@@ -1266,6 +1302,11 @@ function wireEvents() {
 
   // Network — Tailscale routing apply
   document.getElementById('btn-ts-routing').addEventListener('click', applyTailscaleRouting);
+
+  // Network — WiFi toggle
+  document.getElementById('wifi-toggle').addEventListener('change', async function() {
+    toggleWifi(this.checked);
+  });
 
   // Network — Port
   document.getElementById('btn-save-port').addEventListener('click', savePort);
