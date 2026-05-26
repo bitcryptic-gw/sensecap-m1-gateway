@@ -168,49 +168,18 @@ echo "${VERSION_TAG}" > /etc/gateway-version
 chmod 644 /etc/gateway-version
 green "Wrote /etc/gateway-version: ${VERSION_TAG}"
 
-# ── 8. OTA update wrapper ───────────────────────────────────────────────────
+# ── 8. Setuid wrappers (single source of truth) ─────────────────────────────
 
 echo ""
-echo "--- OTA Update Wrapper ---"
+echo "--- Setuid Wrappers ---"
 if command -v gcc &>/dev/null; then
-    gcc -O2 -Wall -o /usr/local/bin/ota-update-wrapper \
-        "${REPO_DIR}/scripts/ota-update-wrapper.c"
-    chown root:root /usr/local/bin/ota-update-wrapper
-    chmod 4755 /usr/local/bin/ota-update-wrapper
-    green "ota-update-wrapper installed (setuid root)"
+    bash "${REPO_DIR}/scripts/install-wrappers.sh"
+    green "All setuid wrappers installed"
 else
-    warn "gcc not found — ota-update-wrapper omitted (install build-essential and re-run)"
+    warn "gcc not found — setuid wrappers omitted (install build-essential and re-run)"
 fi
 
-# ── 9. System power wrapper ─────────────────────────────────────────────────
-
-echo ""
-echo "--- System Power Wrapper ---"
-if command -v gcc &>/dev/null; then
-    gcc -O2 -Wall -o /usr/local/bin/system-power-wrapper \
-        "${REPO_DIR}/scripts/system-power-wrapper.c"
-    chown root:root /usr/local/bin/system-power-wrapper
-    chmod 4755 /usr/local/bin/system-power-wrapper
-    green "system-power-wrapper installed (setuid root)"
-else
-    warn "gcc not found — system-power-wrapper omitted (install build-essential and re-run)"
-fi
-
-# ── 10. WiFi toggle wrapper ──────────────────────────────────────────────────
-
-echo ""
-echo "--- WiFi Toggle Wrapper ---"
-if command -v gcc &>/dev/null; then
-    gcc -O2 -Wall -o /usr/local/bin/wifi-toggle-wrapper \
-        "${REPO_DIR}/scripts/wifi-toggle-wrapper.c"
-    chown root:root /usr/local/bin/wifi-toggle-wrapper
-    chmod 4755 /usr/local/bin/wifi-toggle-wrapper
-    green "wifi-toggle-wrapper installed (setuid root)"
-else
-    warn "gcc not found — wifi-toggle-wrapper omitted (install build-essential and re-run)"
-fi
-
-# ── 11. Gateway UI config files ─────────────────────────────────────────────────────────
+# ── 9. Gateway UI config files ─────────────────────────────────────────────────────────
 
 echo ""
 echo "--- NTFY Config ---"
@@ -245,7 +214,7 @@ else
     green "github-token already exists"
 fi
 
-# ── 12. Post-provisioning summary ─────────────────────────────────────────────
+# ── 10. Post-provisioning summary ─────────────────────────────────────────────
 
 echo ""
 echo "============================================"

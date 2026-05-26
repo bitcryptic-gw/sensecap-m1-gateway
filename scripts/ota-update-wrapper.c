@@ -194,6 +194,13 @@ int main(int argc, char *argv[]) {
         if (nl) *nl = '\0';
     }
 
+    /* Fetch tags so git describe sees the latest release tag */
+    setuid(repo_owner);
+    setgid(0);
+    run((char *[]){"/usr/bin/git", "fetch", "--tags", NULL});
+    setuid(0);
+    setgid(0);
+
     /* Update /etc/gateway-version with new git describe output */
     char version[256] = "unknown";
     setuid(repo_owner);
@@ -220,48 +227,8 @@ int main(int argc, char *argv[]) {
     }
 
     /* ── Recompile all setuid wrappers ──────────────────────────────────────── */
-    {
-        struct { const char *name, *src, *bin; } const w_list[] = {
-            {"ota-update-wrapper",
-             REPO_DIR "/scripts/ota-update-wrapper.c",
-             "/usr/local/bin/ota-update-wrapper"},
-            {"system-power-wrapper",
-             REPO_DIR "/scripts/system-power-wrapper.c",
-             "/usr/local/bin/system-power-wrapper"},
-            {"tailscale-wrapper",
-             REPO_DIR "/scripts/tailscale-wrapper.c",
-             "/usr/local/bin/tailscale-wrapper"},
-            {"wingbits-setup-wrapper",
-             REPO_DIR "/scripts/wingbits-setup-wrapper.c",
-             "/usr/local/bin/wingbits-setup-wrapper"},
-            {"wifi-toggle-wrapper",
-             REPO_DIR "/scripts/wifi-toggle-wrapper.c",
-             "/usr/local/bin/wifi-toggle-wrapper"},
-            {NULL, NULL, NULL},
-        };
-        for (int i = 0; w_list[i].name; i++) {
-            /* Skip if source file does not exist (wingbits may not be installed) */
-            struct stat ws;
-            if (stat(w_list[i].src, &ws) != 0) {
-                /* wingbits-setup-wrapper is optional — skip silently */
-                if (strcmp(w_list[i].name, "wingbits-setup-wrapper") == 0)
-                    continue;
-                fprintf(stderr, "ERROR: source not found: %s\n", w_list[i].src);
-                printf("WRAPPER: %s FAILED\n", w_list[i].name);
-                continue;
-            }
-            int rc = run((char *[]){"/usr/bin/gcc", "-O2",
-                           (char *)w_list[i].src, "-o", (char *)w_list[i].bin, NULL});
-            if (rc != 0) {
-                fprintf(stderr, "ERROR: gcc failed for %s (exit %d)\n", w_list[i].name, rc);
-                printf("WRAPPER: %s FAILED\n", w_list[i].name);
-                continue;
-            }
-            run((char *[]){"/usr/bin/chown", "root:root", (char *)w_list[i].bin, NULL});
-            run((char *[]){"/bin/chmod", "4755", (char *)w_list[i].bin, NULL});
-            printf("WRAPPER: %s OK\n", w_list[i].name);
-        }
-    }
+    /* Delegates to install-wrappers.sh which is the single source of truth */
+    run((char *[]){"/bin/bash", REPO_DIR "/scripts/install-wrappers.sh", NULL});
 
     /* Write diff to stdout */
     if (pre_head[0] && post_head[0] && strcmp(pre_head, post_head) != 0) {

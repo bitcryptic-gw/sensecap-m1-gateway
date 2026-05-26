@@ -552,24 +552,7 @@ function renderInterfaces(d) {
   statusEl.textContent = '';
 }
 
-async function toggleWifi(enabled) {
-  const toggle = document.getElementById('wifi-toggle');
-  const statusEl = document.getElementById('wifi-toggle-status');
-  toggle.disabled = true;
-  statusEl.textContent = 'Applying…';
-  try {
-    await api('/api/network/wifi', 'POST', { enabled });
-    statusEl.textContent = 'Done';
-    setTimeout(loadNetwork, 2000);
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      statusEl.textContent = e.message;
-      toggle.checked = !enabled;
-    }
-  } finally {
-    toggle.disabled = false;
-  }
-}
+
 
 // ── Network — Tailscale Interface Card ───────────────────────────────────────
 
@@ -1303,10 +1286,35 @@ function wireEvents() {
   // Network — Tailscale routing apply
   document.getElementById('btn-ts-routing').addEventListener('click', applyTailscaleRouting);
 
-  // Network — WiFi toggle (delegated for robustness across re-renders)
-  document.addEventListener('change', function(e) {
-    if (e.target && e.target.id === 'wifi-toggle') {
-      toggleWifi(e.target.checked);
+  // Network — WiFi toggle (delegated)
+  document.addEventListener('change', async function(e) {
+    if (e.target.id !== 'wifi-toggle') return;
+    const enabled = e.target.checked;
+    e.target.disabled = true;
+    const statusEl = document.getElementById('wifi-toggle-status');
+    if (statusEl) statusEl.textContent = 'Applying…';
+    try {
+      const resp = await fetch('/api/network/wifi', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + state.token,
+        },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.detail || 'HTTP ' + resp.status);
+      }
+      if (statusEl) statusEl.textContent = 'Done';
+      setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+      setTimeout(loadNetwork, 2000);
+    } catch (err) {
+      console.error('WiFi toggle failed:', err);
+      e.target.checked = !enabled;
+      if (statusEl) statusEl.textContent = 'Error — ' + err.message;
+    } finally {
+      e.target.disabled = false;
     }
   });
 
