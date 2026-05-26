@@ -1303,9 +1303,11 @@ function wireEvents() {
   // Network — Tailscale routing apply
   document.getElementById('btn-ts-routing').addEventListener('click', applyTailscaleRouting);
 
-  // Network — WiFi toggle
-  document.getElementById('wifi-toggle').addEventListener('change', async function() {
-    toggleWifi(this.checked);
+  // Network — WiFi toggle (delegated for robustness across re-renders)
+  document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'wifi-toggle') {
+      toggleWifi(e.target.checked);
+    }
   });
 
   // Network — Port
