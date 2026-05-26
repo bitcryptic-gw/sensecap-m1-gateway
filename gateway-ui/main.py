@@ -433,7 +433,7 @@ def api_beacon(_: Auth):
             m = re.match(r"^(\S+)", line)
             last_beacon = {"timestamp": m.group(1) if m else "", "line": line.strip()}
         if next_beacon is None and "next beacon" in ll:
-            m = re.search(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})", line)
+            m = re.search(r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[+-]\d{4})?)", line)
             if m:
                 next_beacon = m.group(1)
 
