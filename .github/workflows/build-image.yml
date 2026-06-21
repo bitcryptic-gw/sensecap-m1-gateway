@@ -79,9 +79,18 @@ jobs:
             ### What happens on first boot
             On first boot, [boot/firstrun.sh](https://github.com/bitcryptic-gw/sensecap-m1-gateway/blob/main/boot/firstrun.sh) clones this repo and runs [boot/bootstrap.sh](https://github.com/bitcryptic-gw/sensecap-m1-gateway/blob/main/boot/bootstrap.sh) to provision the device automatically.
 
-            ### Requirements
-            - **Raspberry Pi Imager** is required to set your username, password, SSH key, and hostname before flashing.
-            - This image does not ship with a default user account.
+            ### Default login
+            This image includes a default account for SSH access after first boot:
+
+            - **Username:** `sensecap`
+            - **Password:** `sensecap`
+
+            You'll be required to set a new password immediately on first login —
+            this is enforced, not optional. If you used Raspberry Pi Imager's
+            Customisation step to set your own username/password/SSH key (not
+            available via "Use custom" with this file in at least Imager v2.0.10),
+            your own credentials work instead and the default account is never
+            created.
 
             ### Setup instructions
             See the [README](https://github.com/bitcryptic-gw/sensecap-m1-gateway#readme) for full setup instructions after flashing.

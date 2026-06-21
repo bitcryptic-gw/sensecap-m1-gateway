@@ -17,9 +17,14 @@
 # gateway repo and invoke boot/bootstrap.sh, which handles full provisioning.
 # See boot/bootstrap.sh for details of what provisioning does.
 #
-# Raspberry Pi Imager must be used to set the operator's username, password,
-# SSH key, and hostname before flashing. This image does not ship with a
-# default user account.
+# Raspberry Pi Imager's Customisation step can optionally be used to set the
+# operator's username, password, SSH key, and hostname before flashing — but
+# this is not available in all Imager flows (confirmed unavailable in Imager
+# v2.0.10 when flashing via "Use custom" with a custom .img.xz). If no such
+# user exists at boot, this script creates a fallback account
+# (sensecap/sensecap, forced password change on first login) before falling
+# through to the primary-user derivation logic. See the "Fallback default
+# account" block below.
 set -euo pipefail
 
 LOG="/var/log/firstrun.log"
