@@ -177,7 +177,34 @@ else
 fi
 echo "[build] config.txt merged"
 
-# ── 7. Write /etc/gateway-release ─────────────────────────────────────────────
+# ── 7. Gate userconfig.service on userconf.txt ────────────────────────────────
+echo ""
+echo "--- Configuring userconfig.service override ---"
+# userconfig.service (from userconf-pi) processes userconf.txt silently, or
+# falls back to a blocking whiptail wizard if no userconf.txt exists. On a
+# headless gateway with Imager's "Use custom" flow (no Customisation step),
+# no userconf.txt is written, so the wizard would block boot waiting for
+# keyboard input that never comes.
+#
+# We add a systemd drop-in with ConditionPathExists, evaluated at boot time
+# against the then-present-or-absent userconf.txt:
+#   - userconf.txt EXISTS  → condition passes → service runs, stock behaviour
+#     (silent user creation from userconf.txt) is fully preserved.
+#   - userconf.txt ABSENT  → condition fails → service never starts → no
+#     blocking whiptail prompt. firstrun.sh's sensecap fallback takes over.
+#
+# This is a declarative condition — no script, no masking, no race. The
+# base unit ships enabled as usual; the drop-in merely adds a precondition
+# that only passes when there is actually a userconf.txt to process.
+OVERRIDE_DIR="${WORKDIR}/mnt/root/etc/systemd/system/userconfig.service.d"
+mkdir -p "$OVERRIDE_DIR"
+cat > "${OVERRIDE_DIR}/override.conf" << 'SYSTEMDOVERRIDE'
+[Unit]
+ConditionPathExists=/boot/firmware/userconf.txt
+SYSTEMDOVERRIDE
+echo "[build] userconfig.service gated on userconf.txt via systemd drop-in"
+
+# ── 8. Write /etc/gateway-release ─────────────────────────────────────────────
 echo ""
 echo "--- Writing /etc/gateway-release ---"
 DATE_ISO=$(date +%Y-%m-%d)
@@ -187,13 +214,13 @@ DATE_ISO=$(date +%Y-%m-%d)
 } > "${WORKDIR}/mnt/root/etc/gateway-release"
 echo "[build] Wrote /etc/gateway-release with version ${IMAGE_VERSION}"
 
-# ── 8. Unmount (cleanup trap handles this) ────────────────────────────────────
+# ── 9. Unmount (cleanup trap handles this) ────────────────────────────────────
 echo ""
 echo "--- Unmounting ---"
 # Trap will handle unmount and detach; just report that we're done with image
 echo "[build] Image modifications complete"
 
-# ── 8. Compress ───────────────────────────────────────────────────────────────
+# ── 10. Compress ───────────────────────────────────────────────────────────────
 echo ""
 echo "--- Compressing ---"
 OUTPUT_FILE="${OUTPUT_DIR}/${IMG_NAME}-${IMAGE_VERSION}.img.xz"
@@ -203,7 +230,7 @@ xz -T0 -9 "${IMAGE}"
 mv "${IMAGE}.xz" "$OUTPUT_FILE"
 echo "[build] Compressed"
 
-# ── 9. Output ─────────────────────────────────────────────────────────────────
+# ── 11. Output ─────────────────────────────────────────────────────────────────
 echo ""
 echo "=== Build Complete ==="
 echo "Image: ${OUTPUT_FILE}"
