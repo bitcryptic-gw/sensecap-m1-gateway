@@ -55,6 +55,31 @@ if ! command -v git &>/dev/null; then
     echo "[firstrun] git installed"
 fi
 
+# --- Fallback default account ---
+# If Raspberry Pi Imager did not provision a user — this happens when
+# flashing via "Use custom" in some Imager versions — create a fallback
+# account 'sensecap' with a static published password and force a change
+# on first login. Idempotent: does nothing if sensecap already exists or
+# any UID 1000+ user is already present.
+if ! id sensecap &>/dev/null; then
+    EXISTING_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}')
+    if [ -z "$EXISTING_USER" ]; then
+        echo "[firstrun] No Imager-provisioned user found — creating fallback account 'sensecap'"
+
+        groupadd -f sudo
+
+        useradd --create-home --shell /bin/bash --groups sudo sensecap
+
+        echo "sensecap:sensecap" | chpasswd
+
+        chage -d 0 sensecap
+
+        systemctl enable --now ssh || echo "[firstrun] WARNING: Failed to enable SSH" >&2
+
+        echo "[firstrun] Fallback account 'sensecap' created. Default password is published in README.md. Password change will be required on first login."
+    fi
+fi
+
 # --- Derive primary user ---
 PRIMARY_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}')
 if [ -z "$PRIMARY_USER" ]; then

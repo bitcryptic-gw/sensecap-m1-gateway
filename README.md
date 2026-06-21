@@ -45,6 +45,8 @@ The goal is a gateway you can fully understand, audit, and trust — running on 
 
 First boot is fully automated. Flash the image using Raspberry Pi Imager (set your username, password, and SSH key in the Imager settings), insert the card, and power on. The gateway clones this repo, runs `boot/bootstrap.sh`, and reboots. After the reboot, the web UI is available at `http://<hostname>:8080`.
 
+**Imager limitation:** The Customisation step (username/password/SSH-key setup) is not available when flashing via **"Use custom"** in Raspberry Pi Imager v2.0.10 with a custom `.img.xz` file — the settings gear icon does not appear. See [Default Credentials](#default-credentials) below for the fallback account included for this situation.
+
 ---
 
 ## Flashing a Pre-Built Image
@@ -61,6 +63,19 @@ Pre-built images are available on the [Releases](https://github.com/bitcryptic-g
 3. Flash to your microSD card and insert into the SenseCap M1.
 4. Power on — first boot clones this repo and runs `boot/bootstrap.sh` automatically. This takes a few minutes and ends with a reboot.
 5. After the reboot, the web UI is available at `http://<hostname>:8080`. The bearer token is printed to the console during first boot; recover it at any time via `sudo cat /etc/gateway-ui/token`.
+
+### Default Credentials
+
+Raspberry Pi Imager does not show the Customisation step (no username/password/SSH-key setup) when flashing via **"Use custom"** with a custom `.img.xz` file — confirmed on Imager v2.0.10. If you successfully used the Imager settings (e.g. via the `rpi-imager` CLI), your configured credentials work as normal and nothing below applies.
+
+If you flashed via "Use custom" and have no other way in: the image includes a fallback account.
+
+- **Username:** `sensecap`
+- **Password:** `sensecap`
+
+This account has full sudo access and SSH is enabled. **You must set a new password immediately on first login** — this is enforced, not optional. Either SSH in or connect a keyboard/monitor directly; either will prompt the change.
+
+> This is a published, well-known default — anyone with the public image knows this password. It exists only for initial access (zero to one authenticated session). The forced password change on first login is what makes this safe. Do not expose the device to the open internet before changing the password.
 
 ---
 
