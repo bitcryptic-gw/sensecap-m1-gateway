@@ -41,14 +41,6 @@ The goal is a gateway you can fully understand, audit, and trust — running on 
 
 ---
 
-## First Boot
-
-First boot is fully automated. Flash the image using Raspberry Pi Imager (set your username, password, and SSH key in the Imager settings), insert the card, and power on. The gateway clones this repo, runs `boot/bootstrap.sh`, and reboots. After the reboot, the web UI is available at `http://<hostname>:8080`.
-
-**Imager limitation:** The Customisation step (username/password/SSH-key setup) is not available when flashing via **"Use custom"** in Raspberry Pi Imager v2.0.10 with a custom `.img.xz` file — the settings gear icon does not appear. See [Default Credentials](#default-credentials) below for the fallback account included for this situation.
-
----
-
 ## Flashing a Pre-Built Image
 
 Pre-built images are available on the [Releases](https://github.com/bitcryptic-gw/sensecap-m1-gateway/releases) page.
@@ -58,24 +50,17 @@ Pre-built images are available on the [Releases](https://github.com/bitcryptic-g
 - A microSD card (8 GB minimum)
 
 **Steps:**
-1. Download the latest `.img.xz` from Releases and verify the SHA256 checksum.
-2. Open Raspberry Pi Imager, select the downloaded image, and use the settings gear to configure your username, password, SSH key, hostname, and Wi-Fi before flashing.
-3. Flash to your microSD card and insert into the SenseCap M1.
-4. Power on — first boot clones this repo and runs `boot/bootstrap.sh` automatically. This takes a few minutes and ends with a reboot.
-5. After the reboot, the web UI is available at `http://<hostname>:8080`. The bearer token is printed to the console during first boot; recover it at any time via `sudo cat /etc/gateway-ui/token`.
 
-### Default Credentials
+1. Download the latest `.img.xz` from [Releases](https://github.com/bitcryptic-gw/sensecap-m1-gateway/releases) and verify the SHA256 checksum.
+2. Flash it to a microSD card using Raspberry Pi Imager — no Customisation or settings step needed.
+3. Insert the card into the SenseCap M1 and power on.
+4. Wait for first boot to complete — this clones the repo, runs `boot/bootstrap.sh`, and reboots automatically. Takes a few minutes.
+5. SSH in using the default account: `ssh sensecap@<hostname-or-ip>`, password `sensecap`. You'll be required to set a new password immediately — this is enforced, not optional.
+6. The web UI is now available at `http://<hostname>:8080`. The bearer token (separate from your SSH login — this authenticates the web UI, not SSH) is printed to the console during first boot; recover it any time via `sudo cat /etc/gateway-ui/token`.
 
-Raspberry Pi Imager does not show the Customisation step (no username/password/SSH-key setup) when flashing via **"Use custom"** with a custom `.img.xz` file — confirmed on Imager v2.0.10. If you successfully used the Imager settings (e.g. via the `rpi-imager` CLI), your configured credentials work as normal and nothing below applies.
+**Default credentials:** username `sensecap`, password `sensecap`. Full sudo, SSH enabled. This is a published, well-known default — anyone with the public image knows it. The forced password change on first login (enforced, not optional) is what makes that safe. Don't expose the device to the open internet before changing it.
 
-If you flashed via "Use custom" and have no other way in: the image includes a fallback account.
-
-- **Username:** `sensecap`
-- **Password:** `sensecap`
-
-This account has full sudo access and SSH is enabled. **You must set a new password immediately on first login** — this is enforced, not optional. Either SSH in or connect a keyboard/monitor directly; either will prompt the change.
-
-> This is a published, well-known default — anyone with the public image knows this password. It exists only for initial access (zero to one authenticated session). The forced password change on first login is what makes this safe. Do not expose the device to the open internet before changing the password.
+If you'd rather configure your own username, password, or SSH key instead of using the default account, you can do so via Raspberry Pi Imager's Customisation step (the gear icon) — but this is not available when flashing via **"Use custom"** with a custom `.img.xz` file in at least Imager v2.0.10. If your version or method of Imager does support it (e.g. the `rpi-imager` CLI may behave differently), your configured credentials work as normal and the default account is never created (the first-boot script checks for an existing user first).
 
 ---
 
