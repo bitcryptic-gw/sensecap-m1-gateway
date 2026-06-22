@@ -214,11 +214,25 @@ DATE_ISO=$(date +%Y-%m-%d)
 } > "${WORKDIR}/mnt/root/etc/gateway-release"
 echo "[build] Wrote /etc/gateway-release with version ${IMAGE_VERSION}"
 
-# ── 9. Unmount (cleanup trap handles this) ────────────────────────────────────
+# ── 9. Unmount ────────────────────────────────────────────────────────────────
 echo ""
 echo "--- Unmounting ---"
-# Trap will handle unmount and detach; just report that we're done with image
-echo "[build] Image modifications complete"
+# Explicitly unmount before compression. Writes to the loop-mounted
+# filesystem go through the page cache of the backing file; unmounting
+# triggers sync_filesystem() which guarantees all dirty pages are
+# flushed before xz reads the backing file directly for compression.
+# The cleanup trap is idempotent (it checks mountpoint -q) so it's safe
+# to unmount here AND let the trap try again on exit.
+sync
+if ! umount "${WORKDIR}/mnt/boot"; then
+    echo "[build] ERROR: failed to unmount boot partition — aborting before compression" >&2
+    exit 1
+fi
+if ! umount "${WORKDIR}/mnt/root"; then
+    echo "[build] ERROR: failed to unmount root partition — aborting before compression" >&2
+    exit 1
+fi
+echo "[build] Partitions unmounted — all writes flushed to image"
 
 # ── 10. Compress ───────────────────────────────────────────────────────────────
 echo ""
