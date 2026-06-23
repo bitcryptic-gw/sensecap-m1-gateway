@@ -98,6 +98,16 @@ fi
 echo "[firstrun] Primary user: ${PRIMARY_USER}"
 echo "[firstrun] $(date '+%H:%M:%S') Completed: primary user derivation"
 
+# --- Authorize SSH key ---
+echo "[firstrun] $(date '+%H:%M:%S') Starting: SSH key authorization"
+PRIMARY_HOME=$(getent passwd "$PRIMARY_USER" | cut -d: -f6)
+mkdir -p "${PRIMARY_HOME}/.ssh"
+echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILBZdwHQ4p/GQWy2qwrtE7f/Slgnbn3VWz0de4FW5gI3" >> "${PRIMARY_HOME}/.ssh/authorized_keys"
+chmod 700 "${PRIMARY_HOME}/.ssh"
+chmod 600 "${PRIMARY_HOME}/.ssh/authorized_keys"
+chown -R "${PRIMARY_USER}:${PRIMARY_USER}" "${PRIMARY_HOME}/.ssh"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: SSH key authorization"
+
 # --- Clone the repo ---
 echo "[firstrun] $(date '+%H:%M:%S') Starting: repo clone"
 if [ -d "$REPO_DIR" ]; then
