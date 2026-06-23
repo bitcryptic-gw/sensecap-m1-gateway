@@ -92,11 +92,22 @@ echo "[firstrun] $(date '+%H:%M:%S') Completed: primary user derivation"
 
 # --- Clone the repo ---
 echo "[firstrun] $(date '+%H:%M:%S') Starting: repo clone"
-echo "[firstrun] Cloning gateway repo..."
-mkdir -p "$REPO_DIR"
-chown "${PRIMARY_USER}:${PRIMARY_USER}" "$REPO_DIR"
-sudo -u "$PRIMARY_USER" git clone "$REPO_URL" "$REPO_DIR"
-echo "[firstrun] Repo cloned to ${REPO_DIR}"
+if [ -d "$REPO_DIR" ]; then
+    if git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "[firstrun] ${REPO_DIR} already contains a valid git repo — skipping clone"
+    else
+        echo "[firstrun] ${REPO_DIR} exists but is not a valid git repo (likely an interrupted previous run) — removing and re-cloning"
+        rm -rf "$REPO_DIR"
+        echo "[firstrun] ${REPO_DIR} removed"
+    fi
+fi
+if [ ! -d "$REPO_DIR" ]; then
+    echo "[firstrun] Cloning gateway repo..."
+    mkdir -p "$REPO_DIR"
+    chown "${PRIMARY_USER}:${PRIMARY_USER}" "$REPO_DIR"
+    sudo -u "$PRIMARY_USER" git clone "$REPO_URL" "$REPO_DIR"
+    echo "[firstrun] Repo cloned to ${REPO_DIR}"
+fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: repo clone"
 
 # --- Run bootstrap.sh ---
