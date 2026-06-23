@@ -42,6 +42,7 @@ echo "=== SenseCap M1 Gateway First-Run ==="
 echo "Started: $(date)"
 
 # --- Install git if needed ---
+echo "[firstrun] $(date '+%H:%M:%S') Starting: git install check"
 if ! command -v git &>/dev/null; then
     echo "[firstrun] Installing git..."
     export DEBIAN_FRONTEND=noninteractive
@@ -49,6 +50,7 @@ if ! command -v git &>/dev/null; then
     apt-get install -y -qq git
     echo "[firstrun] git installed"
 fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: git install check"
 
 # --- Fallback default account ---
 # If Raspberry Pi Imager did not provision a user — this happens when
@@ -56,6 +58,7 @@ fi
 # account 'sensecap' with a static published password and force a change
 # on first login. Idempotent: does nothing if sensecap already exists or
 # any UID 1000+ user is already present.
+echo "[firstrun] $(date '+%H:%M:%S') Starting: fallback account check"
 if ! id sensecap &>/dev/null; then
     EXISTING_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}')
     if [ -z "$EXISTING_USER" ]; then
@@ -74,8 +77,10 @@ if ! id sensecap &>/dev/null; then
         echo "[firstrun] Fallback account 'sensecap' created. Default password is published in README.md. Password change will be required on first login."
     fi
 fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: fallback account check"
 
 # --- Derive primary user ---
+echo "[firstrun] $(date '+%H:%M:%S') Starting: primary user derivation"
 PRIMARY_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}')
 if [ -z "$PRIMARY_USER" ]; then
     echo "[firstrun] ERROR: No primary non-root user found (UID 1000–65533)."
@@ -83,25 +88,32 @@ if [ -z "$PRIMARY_USER" ]; then
     exit 1
 fi
 echo "[firstrun] Primary user: ${PRIMARY_USER}"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: primary user derivation"
 
 # --- Clone the repo ---
+echo "[firstrun] $(date '+%H:%M:%S') Starting: repo clone"
 echo "[firstrun] Cloning gateway repo..."
 mkdir -p "$REPO_DIR"
 chown "${PRIMARY_USER}:${PRIMARY_USER}" "$REPO_DIR"
 sudo -u "$PRIMARY_USER" git clone "$REPO_URL" "$REPO_DIR"
 echo "[firstrun] Repo cloned to ${REPO_DIR}"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: repo clone"
 
 # --- Run bootstrap.sh ---
+echo "[firstrun] $(date '+%H:%M:%S') Starting: bootstrap.sh"
 echo "[firstrun] Running bootstrap.sh..."
 bash "${REPO_DIR}/boot/bootstrap.sh"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: bootstrap.sh"
 
 # --- Write provisioning sentinel ---
 # gateway-firstrun.service gates on this file — it must only be
 # touched after ALL provisioning steps have completed successfully.
 # set -euo pipefail (line 28) ensures a failure in bootstrap.sh or
 # anywhere above exits before reaching this point.
+echo "[firstrun] $(date '+%H:%M:%S') Starting: write sentinel"
 echo "[firstrun] Provisioning complete — writing sentinel"
 touch /etc/gateway-provisioned
+echo "[firstrun] $(date '+%H:%M:%S') Completed: write sentinel"
 
 # --- Remove any legacy systemd.run from cmdline.txt ---
 # gateway-firstrun.service is now the trigger mechanism, but

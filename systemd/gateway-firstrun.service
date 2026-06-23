@@ -8,6 +8,7 @@ Requires=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/boot/firmware/firstrun.sh
+TimeoutStartSec=600
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=gateway-firstrun

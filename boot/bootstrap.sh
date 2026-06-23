@@ -55,6 +55,7 @@ fi
 
 # ── 1. System packages ────────────────────────────────────────────────────────
 
+echo "[firstrun] $(date '+%H:%M:%S') Starting: system packages"
 echo "--- System Packages ---"
 info "Updating package lists..."
 export DEBIAN_FRONTEND=noninteractive
@@ -73,10 +74,12 @@ apt-get install -y -qq --no-install-recommends \
 info "Adding ${PRIMARY_USER} to docker group..."
 usermod -aG docker "$PRIMARY_USER"
 green "System packages installed"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: system packages"
 
 # ── 2. Repo clone ────────────────────────────────────────────────────────────
 
 echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: repo clone"
 echo "--- Repo Clone ---"
 if [ -d "$SENTINEL" ]; then
     info "Repo already cloned at ${REPO_DIR}"
@@ -95,10 +98,12 @@ fi
 # Mark repo as safe for all users (avoids dubious-ownership errors)
 git config --system --add safe.directory /opt/gateway
 green "Git safe.directory set for /opt/gateway"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: repo clone"
 
 # ── 3. boot/config.txt ───────────────────────────────────────────────────────
 
 echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: boot config"
 echo "--- Boot Config ---"
 if [ "$FORCE" = true ] && [ -d "$SENTINEL" ]; then
     info "Skipping boot config in --force mode"
@@ -122,10 +127,12 @@ else
     cp "$CONFIG_TXT_SRC" "$CONFIG_TXT_DST"
     green "Copied boot config to ${CONFIG_TXT_DST}"
 fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: boot config"
 
 # ── 4. Systemd units ─────────────────────────────────────────────────────────
 
 echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: systemd units"
 echo "--- Systemd Units ---"
 for unit in "${REPO_DIR}"/systemd/*.service; do
     name=$(basename "$unit")
@@ -136,10 +143,12 @@ for unit in "${REPO_DIR}"/systemd/*.service; do
 done
 systemctl daemon-reload
 green "Systemd units installed and enabled"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: systemd units"
 
 # ── 5. Tailscale install ─────────────────────────────────────────────────────
 
 echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: tailscale"
 echo "--- Tailscale ---"
 if [ -x "${REPO_DIR}/scripts/install-tailscale.sh" ]; then
     "${REPO_DIR}/scripts/install-tailscale.sh"
@@ -147,10 +156,12 @@ if [ -x "${REPO_DIR}/scripts/install-tailscale.sh" ]; then
 else
     warn "install-tailscale.sh not found or not executable — skipping"
 fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: tailscale"
 
 # ── 6. Wingbits deps ─────────────────────────────────────────────────────────
 
 echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: wingbits deps"
 echo "--- Wingbits Dependencies ---"
 if [ -x "${REPO_DIR}/scripts/install-wingbits-deps.sh" ]; then
     "${REPO_DIR}/scripts/install-wingbits-deps.sh"
@@ -158,19 +169,23 @@ if [ -x "${REPO_DIR}/scripts/install-wingbits-deps.sh" ]; then
 else
     warn "install-wingbits-deps.sh not found or not executable — skipping"
 fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: wingbits deps"
 
 # ── 7. Gateway version ──────────────────────────────────────────────────────
 
 echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: gateway version"
 echo "--- Gateway Version ---"
 VERSION_TAG=$(git -C "${REPO_DIR}" describe --tags --always 2>/dev/null || echo "dev")
 echo "${VERSION_TAG}" > /etc/gateway-version
 chmod 644 /etc/gateway-version
 green "Wrote /etc/gateway-version: ${VERSION_TAG}"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: gateway version"
 
 # ── 8. Setuid wrappers (single source of truth) ─────────────────────────────
 
 echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: setuid wrappers"
 echo "--- Setuid Wrappers ---"
 if command -v gcc &>/dev/null; then
     bash "${REPO_DIR}/scripts/install-wrappers.sh"
@@ -178,10 +193,12 @@ if command -v gcc &>/dev/null; then
 else
     warn "gcc not found — setuid wrappers omitted (install build-essential and re-run)"
 fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: setuid wrappers"
 
 # ── 9. Gateway UI config files ─────────────────────────────────────────────────────────
 
 echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: gateway UI config"
 echo "--- OTA Log File ---"
 touch /var/log/gateway-ota.log
 chown gateway-ui:gateway-ui /var/log/gateway-ota.log
@@ -220,6 +237,7 @@ if [ ! -f /etc/gateway-ui/github-token ]; then
 else
     green "github-token already exists"
 fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: gateway UI config"
 
 # ── 10. Post-provisioning summary ─────────────────────────────────────────────
 
