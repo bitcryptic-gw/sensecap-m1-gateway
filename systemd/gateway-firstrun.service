@@ -1,0 +1,17 @@
+[Unit]
+Description=SenseCap M1 Gateway First-Run Provisioning
+ConditionPathExists=!/etc/gateway-provisioned
+Documentation=https://github.com/bitcryptic-gw/sensecap-m1-gateway
+After=network-online.target
+Requires=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/boot/firmware/firstrun.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gateway-firstrun
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

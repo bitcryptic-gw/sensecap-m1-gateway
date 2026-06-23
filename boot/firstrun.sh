@@ -3,15 +3,19 @@
 #
 # HOW THIS WORKS (for transparency):
 #
-# Raspberry Pi OS supports a first-boot hook via the systemd.run= kernel
-# parameter in cmdline.txt. When present, systemd invokes the named script
-# once as root during the first boot sequence, before the normal login prompt.
-# This is the same mechanism used by Raspberry Pi Imager for its own
-# first-boot configuration (userconf, Wi-Fi setup, etc).
+# This script is invoked by gateway-firstrun.service, a oneshot systemd
+# unit that is installed and enabled at image-build time. The unit is
+# ordered after network-online.target (Requires= + After=), so it only
+# fires once NetworkManager has completed DHCP on the wired interface.
 #
-# After this script completes, it removes the systemd.run= parameter from
-# cmdline.txt so it does not run again on subsequent boots, then reboots
-# the device to start normally.
+# One-shot guard: the unit has ConditionPathExists=!/etc/gateway-provisioned.
+# This script touches that sentinel file as its last provisioning action,
+# so the unit is skipped on every subsequent boot. If provisioning fails
+# (exit non-zero), the sentinel is never written and the unit retries on
+# the next boot.
+#
+# After this script completes, it reboots the device so all newly-enabled
+# services start cleanly.
 #
 # This script does minimal work itself — its sole job is to clone the
 # gateway repo and invoke boot/bootstrap.sh, which handles full provisioning.
@@ -36,25 +40,6 @@ exec > >(tee -a "$LOG") 2>&1
 
 echo "=== SenseCap M1 Gateway First-Run ==="
 echo "Started: $(date)"
-
-# --- Wait for network ---
-# Check for a real IPv4 default route — this only appears after
-# NetworkManager has completed DHCP on the wired interface, so it is
-# a genuine readiness signal (unlike ICMP to an external host, which
-# can fail even with a working lease, or succeed via other paths with
-# no wired lease at all).
-echo "[firstrun] Waiting for network connectivity..."
-for i in $(seq 1 60); do
-    if ip -4 route show default | grep -q '^default'; then
-        echo "[firstrun] Network ready after ${i}s"
-        break
-    fi
-    if [ "$i" -eq 60 ]; then
-        echo "[firstrun] ERROR: Network not ready after 60s — aborting"
-        exit 1
-    fi
-    sleep 1
-done
 
 # --- Install git if needed ---
 if ! command -v git &>/dev/null; then
@@ -110,14 +95,24 @@ echo "[firstrun] Repo cloned to ${REPO_DIR}"
 echo "[firstrun] Running bootstrap.sh..."
 bash "${REPO_DIR}/boot/bootstrap.sh"
 
-# --- Remove systemd.run from cmdline.txt ---
+# --- Write provisioning sentinel ---
+# gateway-firstrun.service gates on this file — it must only be
+# touched after ALL provisioning steps have completed successfully.
+# set -euo pipefail (line 28) ensures a failure in bootstrap.sh or
+# anywhere above exits before reaching this point.
+echo "[firstrun] Provisioning complete — writing sentinel"
+touch /etc/gateway-provisioned
+
+# --- Remove any legacy systemd.run from cmdline.txt ---
+# gateway-firstrun.service is now the trigger mechanism, but
+# older image builds injected systemd.run= into cmdline.txt.
+# Clean it up idempotently so that an OTA upgrade on a device
+# that never completed first-boot doesn't run this script twice.
 CMDLINE="/boot/firmware/cmdline.txt"
-if [ -f "$CMDLINE" ]; then
-    echo "[firstrun] Removing systemd.run from ${CMDLINE}..."
+if [ -f "$CMDLINE" ] && grep -q 'systemd\.run=' "$CMDLINE" 2>/dev/null; then
+    echo "[firstrun] Removing legacy systemd.run from ${CMDLINE}..."
     sed -i 's/\s*systemd\.run=[^ ]*//g' "$CMDLINE"
     echo "[firstrun] cmdline.txt cleaned"
-else
-    echo "[firstrun] WARNING: ${CMDLINE} not found — skipping cleanup"
 fi
 
 echo "[firstrun] First-run complete. Rebooting in 5s..."

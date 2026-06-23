@@ -129,18 +129,48 @@ cp "$(dirname "$0")/firstrun.sh" "${WORKDIR}/mnt/boot/firstrun.sh"
 chmod +x "${WORKDIR}/mnt/boot/firstrun.sh"
 echo "[build] Copied firstrun.sh to boot partition"
 
-# ── 5. Patch cmdline.txt ──────────────────────────────────────────────────────
+# ── 5. Install and enable gateway-firstrun.service ───────────────────────────
 echo ""
-echo "--- Patching cmdline.txt ---"
-CMDLINE="${WORKDIR}/mnt/boot/cmdline.txt"
-if [ -f "$CMDLINE" ]; then
-    # Add systemd.run parameter, preserving all existing kernel params
-    sed -i 's/$/ systemd.run=\/boot\/firmware\/firstrun.sh systemd.run_success_action=none systemd.run_failure_action=none/' "$CMDLINE"
-    echo "[build] Added systemd.run to cmdline.txt"
-    echo "[build] cmdline.txt: $(cat "$CMDLINE")"
-else
-    echo "ERROR: cmdline.txt not found on boot partition" >&2
+echo "--- Installing gateway-firstrun.service ---"
+UNIT_SRC="$(dirname "$0")/../systemd/gateway-firstrun.service"
+UNIT_DST="${WORKDIR}/mnt/root/etc/systemd/system/gateway-firstrun.service"
+
+if [ ! -f "$UNIT_SRC" ]; then
+    echo "ERROR: gateway-firstrun.service not found at ${UNIT_SRC}" >&2
     exit 1
+fi
+
+cp "$UNIT_SRC" "$UNIT_DST"
+echo "[build] Copied gateway-firstrun.service to /etc/systemd/system/"
+
+# Enable it for multi-user.target
+mkdir -p "${WORKDIR}/mnt/root/etc/systemd/system/multi-user.target.wants"
+ln -sf /etc/systemd/system/gateway-firstrun.service \
+    "${WORKDIR}/mnt/root/etc/systemd/system/multi-user.target.wants/gateway-firstrun.service"
+echo "[build] Enabled gateway-firstrun.service for multi-user.target"
+
+# ── 5a. Ensure NetworkManager-wait-online.service is enabled ──────────────────
+# gateway-firstrun.service Requires=network-online.target. Without
+# NetworkManager-wait-online.service enabled, network-online.target
+# resolves instantly with nothing behind it — a non-signal that would
+# let gateway-firstrun.service fire before DHCP completes.
+echo ""
+echo "--- Enabling NetworkManager-wait-online.service ---"
+NM_WAIT_SRC="/lib/systemd/system/NetworkManager-wait-online.service"
+NM_WAIT_DIR="${WORKDIR}/mnt/root/etc/systemd/system/network-online.target.wants"
+NM_WAIT_DST="${NM_WAIT_DIR}/NetworkManager-wait-online.service"
+
+if [ -f "${WORKDIR}/mnt/root${NM_WAIT_SRC}" ]; then
+    mkdir -p "$NM_WAIT_DIR"
+    if [ ! -L "$NM_WAIT_DST" ]; then
+        ln -sf "$NM_WAIT_SRC" "$NM_WAIT_DST"
+        echo "[build] Enabled NetworkManager-wait-online.service"
+    else
+        echo "[build] NetworkManager-wait-online.service already enabled"
+    fi
+else
+    echo "[build] WARNING: NetworkManager-wait-online.service not found in base image"
+    echo "[build] network-online.target may resolve instantly — gateway-firstrun.service may fire before DHCP completes"
 fi
 
 # ── 6. Merge config.txt ───────────────────────────────────────────────────────
