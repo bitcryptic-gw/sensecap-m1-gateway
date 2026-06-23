@@ -4,6 +4,8 @@ ConditionPathExists=!/etc/gateway-provisioned
 Documentation=https://github.com/bitcryptic-gw/sensecap-m1-gateway
 After=network-online.target
 Requires=network-online.target
+After=time-sync.target
+Requires=time-sync.target
 
 [Service]
 Type=oneshot
