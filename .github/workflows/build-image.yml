@@ -50,7 +50,7 @@ jobs:
         env:
           IMAGE_VERSION: ${{ steps.version.outputs.ver }}
         run: |
-          sudo bash boot/build-image.sh
+          sudo IMAGE_VERSION="${IMAGE_VERSION}" bash boot/build-image.sh
 
       - name: Compute output filename
         id: artifacts
