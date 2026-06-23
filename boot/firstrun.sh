@@ -72,12 +72,20 @@ if ! id sensecap &>/dev/null; then
 
         chage -d 0 sensecap
 
-        systemctl enable --now ssh || echo "[firstrun] WARNING: Failed to enable SSH" >&2
-
         echo "[firstrun] Fallback account 'sensecap' created. Default password is published in README.md. Password change will be required on first login."
     fi
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: fallback account check"
+
+# --- Enable SSH ---
+# Runs unconditionally on every first boot regardless of which
+# user-creation path was taken (Imager-provisioned user, sensecap
+# fallback, or neither). The marker file ensures sshswitch.service
+# also enables SSH on subsequent boots.
+echo "[firstrun] $(date '+%H:%M:%S') Starting: enable SSH"
+systemctl enable --now ssh || echo "[firstrun] WARNING: Failed to enable SSH" >&2
+touch /boot/firmware/ssh
+echo "[firstrun] $(date '+%H:%M:%S') Completed: enable SSH"
 
 # --- Derive primary user ---
 echo "[firstrun] $(date '+%H:%M:%S') Starting: primary user derivation"
