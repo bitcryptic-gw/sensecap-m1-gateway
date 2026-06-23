@@ -173,6 +173,24 @@ else
     echo "[build] network-online.target may resolve instantly — gateway-firstrun.service may fire before DHCP completes"
 fi
 
+# ── 5b. Disable cloud-init in cmdline.txt ─────────────────────────────────────
+# cloud-init is installed by the base Pi OS image for Imager's
+# Customisation feature but serves no purpose on this image —
+# firstrun.sh/bootstrap.sh handle user creation, hostname, package
+# installation, and all other provisioning. cloud-init.target has been
+# observed to hang boot indefinitely on real hardware even with no
+# real configuration present, so disable it at the kernel level.
+echo ""
+echo "--- Disabling cloud-init in cmdline.txt ---"
+CMDLINE="${WORKDIR}/mnt/boot/cmdline.txt"
+if [ -f "$CMDLINE" ] && ! grep -q 'cloud-init=disabled' "$CMDLINE" 2>/dev/null; then
+    sed -i 's/$/ cloud-init=disabled/' "$CMDLINE"
+    echo "[build] Added cloud-init=disabled to cmdline.txt"
+    echo "[build] cmdline.txt: $(cat "$CMDLINE")"
+else
+    echo "[build] cloud-init=disabled already present or cmdline.txt not found"
+fi
+
 # ── 6. Merge config.txt ───────────────────────────────────────────────────────
 echo ""
 echo "--- Merging config.txt ---"
