@@ -38,14 +38,19 @@ echo "=== SenseCap M1 Gateway First-Run ==="
 echo "Started: $(date)"
 
 # --- Wait for network ---
+# Check for a real IPv4 default route — this only appears after
+# NetworkManager has completed DHCP on the wired interface, so it is
+# a genuine readiness signal (unlike ICMP to an external host, which
+# can fail even with a working lease, or succeed via other paths with
+# no wired lease at all).
 echo "[firstrun] Waiting for network connectivity..."
 for i in $(seq 1 60); do
-    if ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
-        echo "[firstrun] Network reachable after ${i}s"
+    if ip -4 route show default | grep -q '^default'; then
+        echo "[firstrun] Network ready after ${i}s"
         break
     fi
     if [ "$i" -eq 60 ]; then
-        echo "[firstrun] ERROR: Network not reachable after 60s — aborting"
+        echo "[firstrun] ERROR: Network not ready after 60s — aborting"
         exit 1
     fi
     sleep 1
