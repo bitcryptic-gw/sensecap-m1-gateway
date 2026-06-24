@@ -181,6 +181,20 @@ else
     log "User gateway-ui already exists — skipping"
 fi
 
+# Fix ownership of files that bootstrap.sh may have created before
+# the gateway-ui user existed (bootstrap.sh runs first and falls
+# back to root:root when the user isn't present yet).
+for f in \
+    /var/log/gateway-ota.log \
+    /etc/gateway-ui/ntfy.json \
+    /etc/gateway-ui/github-token; do
+    if [ -f "$f" ]; then
+        chown gateway-ui:gateway-ui "$f" && \
+            log "Fixed ownership of ${f} to gateway-ui:gateway-ui" || \
+            log "WARNING: Failed to chown ${f}"
+    fi
+done
+
 # Install Python dependencies
 log "Installing Python dependencies for gateway-ui..."
 pip3 install --quiet -r /opt/gateway/gateway-ui/requirements.txt
