@@ -38,6 +38,18 @@ REPO_DIR="/opt/gateway"
 # Tee all output to log file and console
 exec > >(tee -a "$LOG") 2>&1
 
+# Find the first UID-1000+ account with a real login shell (i.e. one
+# listed in /etc/shells).  Service accounts with nologin/false shells
+# are deliberately excluded — they are not interactive users.
+first_interactive_user() {
+    getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1":"$7}' | while IFS=: read -r user shell; do
+        if grep -qxF "$shell" /etc/shells; then
+            echo "$user"
+            break
+        fi
+    done
+}
+
 echo "=== SenseCap M1 Gateway First-Run ==="
 echo "Started: $(date)"
 
@@ -60,7 +72,7 @@ echo "[firstrun] $(date '+%H:%M:%S') Completed: git install check"
 # any UID 1000+ user is already present.
 echo "[firstrun] $(date '+%H:%M:%S') Starting: fallback account check"
 if ! id sensecap &>/dev/null; then
-    EXISTING_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}')
+    EXISTING_USER=$(first_interactive_user)
     if [ -z "$EXISTING_USER" ]; then
         echo "[firstrun] No Imager-provisioned user found — creating fallback account 'sensecap'"
 
@@ -89,7 +101,7 @@ echo "[firstrun] $(date '+%H:%M:%S') Completed: enable SSH"
 
 # --- Derive primary user ---
 echo "[firstrun] $(date '+%H:%M:%S') Starting: primary user derivation"
-PRIMARY_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $1; exit}')
+PRIMARY_USER=$(first_interactive_user)
 if [ -z "$PRIMARY_USER" ]; then
     echo "[firstrun] ERROR: No primary non-root user found (UID 1000–65533)."
     echo "[firstrun] Did you forget to set a username in Raspberry Pi Imager?"
