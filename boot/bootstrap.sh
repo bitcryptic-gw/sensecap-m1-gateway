@@ -164,7 +164,20 @@ else
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: wingbits deps"
 
-# ── 7. Gateway version ──────────────────────────────────────────────────────
+# ── 7. Helium gateway binary ───────────────────────────────────────────────
+
+echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: helium gateway"
+echo "--- Helium Gateway ---"
+if [ -x "${REPO_DIR}/scripts/install-helium-gateway.sh" ]; then
+    "${REPO_DIR}/scripts/install-helium-gateway.sh"
+    green "Helium gateway installed"
+else
+    warn "install-helium-gateway.sh not found or not executable — skipping"
+fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: helium gateway"
+
+# ── 8. Gateway version ──────────────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: gateway version"
@@ -175,7 +188,7 @@ chmod 644 /etc/gateway-version
 green "Wrote /etc/gateway-version: ${VERSION_TAG}"
 echo "[firstrun] $(date '+%H:%M:%S') Completed: gateway version"
 
-# ── 8. Setuid wrappers (single source of truth) ─────────────────────────────
+# ── 9. Setuid wrappers (single source of truth) ─────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: setuid wrappers"
@@ -188,7 +201,7 @@ else
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: setuid wrappers"
 
-# ── 9. Gateway UI config files ─────────────────────────────────────────────────────────
+# ── 10. Gateway UI config files ─────────────────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: gateway UI config"
@@ -244,7 +257,7 @@ echo "[firstrun] $(date '+%H:%M:%S') Starting: write sentinel"
 touch "$SENTINEL"
 echo "[firstrun] $(date '+%H:%M:%S') Completed: write sentinel"
 
-# ── 10. Post-provisioning summary ─────────────────────────────────────────────
+# ── 11. Post-provisioning summary ─────────────────────────────────────────────
 
 echo ""
 echo "============================================"
