@@ -10,7 +10,7 @@ CONFIG_TXT_SRC="${REPO_DIR}/boot/config.txt"
 CONFIG_TXT_DST="/boot/firmware/config.txt"
 ENV_FILE="${REPO_DIR}/config.env"
 ENV_EXAMPLE="${REPO_DIR}/config.env.example"
-SENTINEL="${REPO_DIR}/.git"
+SENTINEL="/etc/gateway-bootstrap-complete"
 
 # ── Colour helpers ─────────────────────────────────────────────────────────────
 green() { echo "  [OK] $*"; }
@@ -45,7 +45,7 @@ if [ "${1:-}" = "--force" ]; then
 fi
 
 # --- Already provisioned? ---
-if [ -d "$SENTINEL" ] && [ "$FORCE" = false ]; then
+if [ -f "$SENTINEL" ] && [ "$FORCE" = false ]; then
     echo ""
     echo "This device appears to already be provisioned (${SENTINEL} exists)."
     echo "Re-run with --force to overwrite. This will not delete existing config or secrets."
@@ -81,7 +81,7 @@ echo "[firstrun] $(date '+%H:%M:%S') Completed: system packages"
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: repo clone"
 echo "--- Repo Clone ---"
-if [ -d "$SENTINEL" ]; then
+if [ -d "${REPO_DIR}/.git" ]; then
     info "Repo already cloned at ${REPO_DIR}"
     # Ensure correct ownership in case of previous root-owned clone
     chown -R "${PRIMARY_USER}:${PRIMARY_USER}" "$REPO_DIR"
@@ -105,7 +105,7 @@ echo "[firstrun] $(date '+%H:%M:%S') Completed: repo clone"
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: boot config"
 echo "--- Boot Config ---"
-if [ "$FORCE" = true ] && [ -d "$SENTINEL" ]; then
+if [ "$FORCE" = true ] && [ -d "${REPO_DIR}/.git" ]; then
     info "Skipping boot config in --force mode"
 elif [ -f "$CONFIG_TXT_DST" ]; then
     if cmp -s "$CONFIG_TXT_SRC" "$CONFIG_TXT_DST"; then
@@ -238,6 +238,14 @@ else
     green "github-token already exists"
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: gateway UI config"
+
+# --- Write provisioning sentinel ---
+# Must be written only after ALL provisioning steps above have
+# completed successfully.  set -e (line 4) guarantees a failure
+# anywhere above exits before this point is reached.
+echo "[firstrun] $(date '+%H:%M:%S') Starting: write sentinel"
+touch "$SENTINEL"
+echo "[firstrun] $(date '+%H:%M:%S') Completed: write sentinel"
 
 # ── 10. Post-provisioning summary ─────────────────────────────────────────────
 
