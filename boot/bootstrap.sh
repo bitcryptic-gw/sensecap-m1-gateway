@@ -111,17 +111,10 @@ elif [ -f "$CONFIG_TXT_DST" ]; then
     if cmp -s "$CONFIG_TXT_SRC" "$CONFIG_TXT_DST"; then
         green "Boot config already up-to-date"
     else
-        echo ""
-        echo "WARNING: ${CONFIG_TXT_DST} exists and differs from the repo version."
-        echo "Overwrite it? The new config enables SPI, I2C, and other gateway settings."
-        echo ""
-        read -r -p "Overwrite /boot/firmware/config.txt? [y/N] " REPLY
-        if [ "${REPLY,,}" = "y" ]; then
-            cp "$CONFIG_TXT_SRC" "$CONFIG_TXT_DST"
-            green "Copied boot config to ${CONFIG_TXT_DST}"
-        else
-            warn "Leaving existing boot config unchanged"
-        fi
+        BACKUP="${CONFIG_TXT_DST}.bak-$(date +%Y%m%d-%H%M%S)"
+        cp "$CONFIG_TXT_DST" "$BACKUP"
+        cp "$CONFIG_TXT_SRC" "$CONFIG_TXT_DST"
+        green "Boot config updated (backup at ${BACKUP})"
     fi
 else
     cp "$CONFIG_TXT_SRC" "$CONFIG_TXT_DST"
