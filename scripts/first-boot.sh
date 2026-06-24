@@ -197,7 +197,7 @@ done
 
 # Install Python dependencies
 log "Installing Python dependencies for gateway-ui..."
-pip3 install --quiet -r /opt/gateway/gateway-ui/requirements.txt
+pip3 install --quiet --break-system-packages -r /opt/gateway/gateway-ui/requirements.txt
 log "Python dependencies installed"
 
 # Generate bearer token
