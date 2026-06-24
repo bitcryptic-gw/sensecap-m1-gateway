@@ -30,7 +30,8 @@ jobs:
             xz-utils \
             kpartx \
             wget \
-            curl
+            curl \
+            gcc-aarch64-linux-gnu
 
       - name: Determine version
         id: version

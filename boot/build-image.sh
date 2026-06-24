@@ -43,6 +43,60 @@ echo "Workdir: ${WORKDIR}"
 
 mkdir -p "${WORKDIR}/mnt/boot" "${WORKDIR}/mnt/root"
 
+# ── 0. Cross-compile lora_pkt_fwd ─────────────────────────────────────────────
+SX1302_REPO="https://github.com/Lora-net/sx1302_hal.git"
+SX1302_COMMIT="4b42025d1751e04632c0b04160e0d29dbbb222a5"
+
+echo ""
+echo "--- Cross-compiling lora_pkt_fwd (sx1302_hal) ---"
+
+if ! command -v aarch64-linux-gnu-gcc &>/dev/null; then
+    echo "ERROR: aarch64-linux-gnu-gcc not found — install gcc-aarch64-linux-gnu" >&2
+    exit 1
+fi
+
+SX1302_SRC=$(mktemp -d)
+git init -q "$SX1302_SRC"
+git -C "$SX1302_SRC" remote add origin "$SX1302_REPO"
+git -C "$SX1302_SRC" fetch -q --depth 1 origin "$SX1302_COMMIT"
+git -C "$SX1302_SRC" checkout -q FETCH_HEAD
+echo "[build] sx1302_hal cloned at commit ${SX1302_COMMIT}"
+
+echo "[build] Building (CROSS_COMPILE=aarch64-linux-gnu- ARCH=arm64)..."
+make -C "$SX1302_SRC" CROSS_COMPILE=aarch64-linux-gnu- ARCH=arm64 \
+    packet_forwarder -j$(nproc) 2>&1 | sed 's/^/[build]   /'
+echo "[build] Build complete"
+
+BIN="${SX1302_SRC}/packet_forwarder/lora_pkt_fwd"
+if [ ! -f "$BIN" ]; then
+    echo "ERROR: lora_pkt_fwd not produced by build" >&2
+    exit 1
+fi
+
+# ── Verify binary ─────────────────────────────────────────────────────────────
+echo "[build] Verifying binary..."
+FILE_OUT=$(file "$BIN" 2>&1)
+echo "[build]   file: ${FILE_OUT}"
+
+if ! echo "$FILE_OUT" | grep -q 'ARM aarch64'; then
+    echo "ERROR: Built binary is not ARM aarch64" >&2
+    echo "       ${FILE_OUT}" >&2
+    exit 1
+fi
+
+# Check dynamic dependencies — must only be libc/libm, nothing unexpected
+DEPS=$(aarch64-linux-gnu-readelf -d "$BIN" 2>&1 | grep 'NEEDED' || true)
+echo "[build]   NEEDED: $(echo "$DEPS" | tr '\n' ' ')"
+
+UNEXPECTED=$(echo "$DEPS" | grep -vE 'libc\.so|libm\.so|ld-linux' || true)
+if [ -n "$UNEXPECTED" ]; then
+    echo "ERROR: Unexpected dynamic dependencies found:" >&2
+    echo "$UNEXPECTED" >&2
+    exit 1
+fi
+
+echo "[build] lora_pkt_fwd verified — ARM aarch64, standard deps only"
+
 # ── 1. Download base image ────────────────────────────────────────────────────
 echo ""
 echo "--- Downloading Raspberry Pi OS Lite 64-bit ---"
@@ -128,6 +182,17 @@ echo "--- Injecting firstrun.sh ---"
 cp "$(dirname "$0")/firstrun.sh" "${WORKDIR}/mnt/boot/firstrun.sh"
 chmod +x "${WORKDIR}/mnt/boot/firstrun.sh"
 echo "[build] Copied firstrun.sh to boot partition"
+
+# ── 4a. Install lora_pkt_fwd into image ──────────────────────────────────────
+echo ""
+echo "--- Installing lora_pkt_fwd ---"
+mkdir -p "${WORKDIR}/mnt/root/usr/local/bin"
+cp "${SX1302_SRC}/packet_forwarder/lora_pkt_fwd" \
+    "${WORKDIR}/mnt/root/usr/local/bin/lora_pkt_fwd"
+chmod 755 "${WORKDIR}/mnt/root/usr/local/bin/lora_pkt_fwd"
+echo "[build] lora_pkt_fwd installed to /usr/local/bin/lora_pkt_fwd"
+# SX1302 source tree no longer needed — will be cleaned up with WORKDIR
+rm -rf "$SX1302_SRC"
 
 # ── 5. Install and enable gateway-firstrun.service ───────────────────────────
 echo ""
