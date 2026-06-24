@@ -165,6 +165,14 @@ log "Enabling and starting pktfwd.service..."
 systemctl enable pktfwd.service
 systemctl start  pktfwd.service
 
+# Deploy gateway-rs config (ECC608A keypair URI, Helium endpoints)
+# gateway-rs.service runs as root (no User=/DynamicUser= in the unit),
+# so root:root 644 is correct.
+log "Deploying gateway-rs settings.toml..."
+mkdir -p /etc/helium_gateway
+cp /opt/gateway/config/settings.toml /etc/helium_gateway/settings.toml
+chmod 644 /etc/helium_gateway/settings.toml
+
 log "Enabling and starting gateway-rs.service..."
 systemctl enable gateway-rs.service
 systemctl start  gateway-rs.service
