@@ -65,6 +65,11 @@ echo "[build] sx1302_hal cloned at commit ${SX1302_COMMIT}"
 echo "[build] Building (CROSS_COMPILE=aarch64-linux-gnu- ARCH=arm64)..."
 make -C "$SX1302_SRC" CROSS_COMPILE=aarch64-linux-gnu- ARCH=arm64 \
     packet_forwarder -j$(nproc) 2>&1 | sed 's/^/[build]   /'
+BUILD_STATUS=${PIPESTATUS[0]}
+if [ "$BUILD_STATUS" -ne 0 ]; then
+    echo "ERROR: sx1302_hal build failed (exit ${BUILD_STATUS})" >&2
+    exit 1
+fi
 echo "[build] Build complete"
 
 BIN="${SX1302_SRC}/packet_forwarder/lora_pkt_fwd"
