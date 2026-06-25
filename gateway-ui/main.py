@@ -525,10 +525,13 @@ def _parse_wingbits_cmd(cmd: str) -> tuple[str, str]:
     if not cmd:
         raise HTTPException(status_code=400, detail="Install command is required")
 
-    if not cmd.strip():
-        raise HTTPException(status_code=400, detail="Install command is required")
+    if len(cmd) > 4096:
+        raise HTTPException(status_code=413, detail="Install command too long")
 
     cmd = cmd.strip()
+
+    if not cmd:
+        raise HTTPException(status_code=400, detail="Install command is required")
 
     if WINGBITS_DOWNLOAD_URL not in cmd:
         raise HTTPException(
@@ -580,9 +583,6 @@ async def api_wingbits_setup(_: Auth, request: Request):
     body = await request.json()
     cmd = str(body.get("cmd", ""))
     loc_val, id_val = _parse_wingbits_cmd(cmd)
-
-    if len(cmd) > 4096:
-        raise HTTPException(status_code=413, detail="Install command too long")
 
     _wingbits_running = True
 
