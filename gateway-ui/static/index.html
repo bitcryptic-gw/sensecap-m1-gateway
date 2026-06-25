@@ -134,15 +134,17 @@
             <p class="wingbits-intro">
               Use this flow for first-time setup or when relocating this device
               or changing the station ID. Log into <strong>wingbits.com</strong>
-              &rarr; <strong>My Stations</strong> &rarr; <strong>BYOD Install</strong>
-              to get your install URL.
+              &rarr; <strong>My Stations</strong> &rarr; <strong>BYOD Install</strong>,
+              then <strong>paste the full install command</strong> below.
+              It should start with <code>curl -sL https://gitlab.com/wingbits/...</code>
+              and contain <code>loc="..."</code> and <code>id="..."</code>.
             </p>
             <div class="field-group">
-              <label class="field-label" for="wingbits-url">Install URL</label>
-              <input type="text" id="wingbits-url" class="wingbits-input"
-                     placeholder="https://gitlab.com/wingbits/config/-/raw/..."
+              <label class="field-label" for="wingbits-cmd">Install command</label>
+              <input type="text" id="wingbits-cmd" class="wingbits-input"
+                     placeholder="curl -sL https://gitlab.com/wingbits/config/-/raw/master/download.sh | sudo loc=&quot;...&quot; id=&quot;...&quot; bash"
                      autocomplete="off" spellcheck="false">
-              <span id="wingbits-url-msg" class="wingbits-input-msg hidden"></span>
+              <span id="wingbits-cmd-msg" class="wingbits-input-msg hidden"></span>
             </div>
             <div class="action-row">
               <button id="btn-wingbits-run" class="btn btn-primary" disabled>Run Setup</button>

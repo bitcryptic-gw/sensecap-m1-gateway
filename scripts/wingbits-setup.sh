@@ -1,13 +1,14 @@
 #!/bin/bash
 # Wingbits setup / reconfiguration script.
-# Usage: sudo wingbits-setup.sh "<install-url>"
+# Usage: sudo wingbits-setup.sh --loc "<lat>, <lon>" --id "<station-id>"
 #
-# Accepts the station-specific install URL from the Wingbits dashboard
-# ("BYOD Install" button).  Idempotent and re-runnable — safe for
-# first-time setup, station relocation, or station ID change.
+# Accepts location (lat,lon) and station ID, then fetches and runs the
+# official Wingbits install script with those parameters.
+# Idempotent and re-runnable — safe for first-time setup, station
+# relocation, or station ID change.
 set -euo pipefail
 
-URL_PATTERN='^https://gitlab\.com/wingbits/config/-/raw/'
+WINGBITS_DOWNLOAD_URL="https://gitlab.com/wingbits/config/-/raw/master/download.sh"
 
 # --- Preflight ---
 if [ "$(id -u)" -ne 0 ]; then
@@ -15,17 +16,24 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-URL="${1:-}"
-if [ -z "$URL" ]; then
-    echo "ERROR: No install URL provided." >&2
-    echo "Usage: $0 \"https://gitlab.com/wingbits/config/-/raw/install.sh?station_id=<id>&token=<token>\"" >&2
-    exit 1
-fi
+LOC=""
+ID=""
 
-if ! echo "$URL" | grep -qE "$URL_PATTERN"; then
-    echo "ERROR: URL does not match expected Wingbits GitLab pattern." >&2
-    echo "  Expected prefix: https://gitlab.com/wingbits/config/-/raw/" >&2
-    echo "  Got: ${URL}" >&2
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --loc) LOC="$2"; shift 2 ;;
+        --id)  ID="$2";  shift 2 ;;
+        *)
+            echo "ERROR: Unknown argument: $1" >&2
+            echo "Usage: $0 --loc \"<lat>, <lon>\" --id \"<station-id>\"" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [ -z "$LOC" ] || [ -z "$ID" ]; then
+    echo "ERROR: Both --loc and --id are required." >&2
+    echo "Usage: $0 --loc \"<lat>, <lon>\" --id \"<station-id>\"" >&2
     exit 1
 fi
 
@@ -43,7 +51,7 @@ fi
 
 # --- Run official Wingbits install script ---
 echo "[INFO] Running Wingbits install script..."
-bash <(curl -s "$URL")
+curl -sL "$WINGBITS_DOWNLOAD_URL" | loc="$LOC" id="$ID" bash
 
 # --- Patch /etc/default/readsb for beast mode ---
 READSB_DEFAULT="/etc/default/readsb"

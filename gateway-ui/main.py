@@ -67,8 +67,10 @@ ALLOWED_ALERT_KEYS = {
     "update_available", "helium_fault", "wingbits_fault",
     "cpu_temp", "ram", "storage", "reboot", "shutdown",
 }
-WINGBITS_URL_RE = re.compile(r"^https://gitlab\.com/wingbits/config/-/raw/")
 SHELL_META_RE = re.compile(r"[;&|`$()<>\n\r]")
+WINGBITS_DOWNLOAD_URL = "https://gitlab.com/wingbits/config/-/raw/master/download.sh"
+LOC_RE  = re.compile(r"^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$")
+ID_RE   = re.compile(r"^[A-Za-z0-9]{8,32}$")
 _wingbits_running = False
 
 TS_KEY_RE = re.compile(r"^tskey(-auth)?-[A-Za-z0-9_-]+")
@@ -519,14 +521,50 @@ def api_wingbits(_: Auth):
     }
 
 
-def _validate_wingbits_url(url: str) -> str | None:
-    if not url:
-        return "URL is required"
-    if not WINGBITS_URL_RE.match(url):
-        return "URL must start with https://gitlab.com/wingbits/config/-/raw/"
-    if SHELL_META_RE.search(url):
-        return "URL contains invalid characters"
-    return None
+def _parse_wingbits_cmd(cmd: str) -> tuple[str, str]:
+    if not cmd:
+        raise HTTPException(status_code=400, detail="Install command is required")
+
+    if not cmd.strip():
+        raise HTTPException(status_code=400, detail="Install command is required")
+
+    cmd = cmd.strip()
+
+    if WINGBITS_DOWNLOAD_URL not in cmd:
+        raise HTTPException(
+            status_code=400,
+            detail="This doesn't look like a Wingbits install command — please paste the full command from your dashboard's Install Station page.",
+        )
+
+    loc_m = re.search(r'loc="([^"]*)"', cmd)
+    id_m  = re.search(r'id="([^"]*)"', cmd)
+
+    if not loc_m or not id_m:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not find loc=\"...\" and id=\"...\" in the pasted command — please paste the full install command from your dashboard.",
+        )
+
+    loc_val = loc_m.group(1)
+    id_val  = id_m.group(1)
+
+    if SHELL_META_RE.search(loc_val) or SHELL_META_RE.search(id_val):
+        raise HTTPException(status_code=400, detail="Install command contains invalid characters")
+
+    m = LOC_RE.match(loc_val)
+    if not m:
+        raise HTTPException(status_code=400, detail="Invalid location format — expected loc=\"<lat>, <lon>\" with decimal numbers, e.g. loc=\"-37.6, 143.8\"")
+    lat = float(m.group(1))
+    lon = float(m.group(2))
+    if not (-90 <= lat <= 90):
+        raise HTTPException(status_code=400, detail="Latitude out of range (-90 to 90)")
+    if not (-180 <= lon <= 180):
+        raise HTTPException(status_code=400, detail="Longitude out of range (-180 to 180)")
+
+    if not ID_RE.match(id_val):
+        raise HTTPException(status_code=400, detail="Invalid station ID format — expected alphanumeric, 8-32 characters")
+
+    return loc_val, id_val
 
 
 @app.post("/api/wingbits/setup")
@@ -540,10 +578,11 @@ async def api_wingbits_setup(_: Auth, request: Request):
         raise HTTPException(status_code=409, detail="Setup already in progress")
 
     body = await request.json()
-    url = str(body.get("url", ""))
-    err = _validate_wingbits_url(url)
-    if err:
-        raise HTTPException(status_code=400, detail=err)
+    cmd = str(body.get("cmd", ""))
+    loc_val, id_val = _parse_wingbits_cmd(cmd)
+
+    if len(cmd) > 4096:
+        raise HTTPException(status_code=413, detail="Install command too long")
 
     _wingbits_running = True
 
@@ -551,7 +590,7 @@ async def api_wingbits_setup(_: Auth, request: Request):
         global _wingbits_running
         try:
             proc = await asyncio.create_subprocess_exec(
-                WRAPPER_BIN, url,
+                WRAPPER_BIN, "--loc", loc_val, "--id", id_val,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )

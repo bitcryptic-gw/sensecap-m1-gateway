@@ -84,7 +84,7 @@ Docker is installed on the device but is **not used for Helium or Wingbits**. Bo
   `--net-connector localhost,30015,beast_reduce_out --net-beast-reduce-optimize-for-mlat --net-beast-reduce-interval=0.125`
 - SDR symlink: `/dev/rtlsdr0` (via udev rule `99-rtlsdr.rules`)
 - GeoSigner: USB device, handled by the official wingbits client
-- Setup/reconfiguration: `sudo /opt/gateway/scripts/wingbits-setup.sh "<dashboard-url>"`
+- Setup/reconfiguration: `sudo /opt/gateway/scripts/wingbits-setup.sh --loc "<lat>, <lon>" --id "<station-id>"`
 - readsb must tolerate absent SDR hardware (retry loop, does not block boot)
 
 ## Coding standards

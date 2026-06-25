@@ -5,10 +5,16 @@
 #include <sys/types.h>
 #include <pwd.h>
 
-#define ALLOWED_PREFIX "https://gitlab.com/wingbits/config/-/raw/"
 #define SETUP_SCRIPT   "/opt/gateway/scripts/wingbits-setup.sh"
 
 static const char SHELL_META[] = {';', '&', '|', '`', '$', '(', ')', '<', '>', '\n', '\r', 0};
+
+static int has_shell_meta(const char *s) {
+    for (const char *p = s; *p; p++) {
+        if (strchr(SHELL_META, *p)) return 1;
+    }
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
     struct passwd *pw = getpwnam("gateway-ui");
@@ -21,22 +27,38 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (argc != 2) {
-        fprintf(stderr, "ERROR: usage: wingbits-setup-wrapper <install-url>\n");
+    const char *loc = NULL;
+    const char *id  = NULL;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--loc") == 0 && i + 1 < argc) {
+            loc = argv[++i];
+        } else if (strcmp(argv[i], "--id") == 0 && i + 1 < argc) {
+            id = argv[++i];
+        } else {
+            fprintf(stderr, "ERROR: usage: wingbits-setup-wrapper --loc \"<loc>\" --id \"<id>\"\n");
+            return 1;
+        }
+    }
+
+    if (!loc || !id) {
+        fprintf(stderr, "ERROR: both --loc and --id are required\n");
         return 1;
     }
 
-    const char *url = argv[1];
-    size_t prefix_len = strlen(ALLOWED_PREFIX);
-
-    if (strncmp(url, ALLOWED_PREFIX, prefix_len) != 0) {
-        fprintf(stderr, "ERROR: URL must start with: %s\n", ALLOWED_PREFIX);
+    if (has_shell_meta(loc) || has_shell_meta(id)) {
+        fprintf(stderr, "ERROR: location or station ID contains invalid characters\n");
         return 1;
     }
 
-    for (const char *p = url; *p; p++) {
-        if (strchr(SHELL_META, *p)) {
-            fprintf(stderr, "ERROR: URL contains invalid characters\n");
+    if (!strchr(loc, ',')) {
+        fprintf(stderr, "ERROR: location must contain latitude and longitude separated by a comma\n");
+        return 1;
+    }
+
+    for (const char *p = id; *p; p++) {
+        if (!((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9'))) {
+            fprintf(stderr, "ERROR: station ID must be alphanumeric\n");
             return 1;
         }
     }
@@ -44,7 +66,7 @@ int main(int argc, char *argv[]) {
     setuid(0);
     setgid(0);
 
-    execl(SETUP_SCRIPT, SETUP_SCRIPT, url, (char *)NULL);
+    execl(SETUP_SCRIPT, SETUP_SCRIPT, "--loc", loc, "--id", id, (char *)NULL);
 
     fprintf(stderr, "ERROR: failed to execute %s\n", SETUP_SCRIPT);
     return 1;

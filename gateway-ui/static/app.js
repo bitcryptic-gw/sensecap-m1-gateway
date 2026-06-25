@@ -311,35 +311,36 @@ function wingbitsServiceRow(s) {
     </div>`;
 }
 
-function _wingbitsValidateUrl(url) {
-  return /^https:\/\/gitlab\.com\/wingbits\/config\/-\/raw\//.test(url);
+function _wingbitsValidateCmd(cmd) {
+  return cmd.includes('https://gitlab.com/wingbits/config/-/raw/master/download.sh')
+    && /loc="[^"]*"/.test(cmd) && /id="[^"]*"/.test(cmd);
 }
 
 function _wingbitsUpdateBtn() {
-  const url = document.getElementById('wingbits-url').value.trim();
+  const cmd = document.getElementById('wingbits-cmd').value.trim();
   const btn = document.getElementById('btn-wingbits-run');
-  const msg = document.getElementById('wingbits-url-msg');
-  if (!url) {
+  const msg = document.getElementById('wingbits-cmd-msg');
+  if (!cmd) {
     btn.disabled = true;
     msg.classList.add('hidden');
-    document.getElementById('wingbits-url').classList.remove('invalid');
+    document.getElementById('wingbits-cmd').classList.remove('invalid');
     return;
   }
-  if (_wingbitsValidateUrl(url)) {
+  if (_wingbitsValidateCmd(cmd)) {
     btn.disabled = false;
     msg.classList.add('hidden');
-    document.getElementById('wingbits-url').classList.remove('invalid');
+    document.getElementById('wingbits-cmd').classList.remove('invalid');
   } else {
     btn.disabled = true;
-    msg.textContent = 'URL must start with https://gitlab.com/wingbits/config/-/raw/';
+    msg.textContent = 'Paste the full install command from your Wingbits dashboard (starts with curl -sL https://gitlab.com/wingbits/... and contains loc="..." id="...")';
     msg.className = 'wingbits-input-msg';
-    document.getElementById('wingbits-url').classList.add('invalid');
+    document.getElementById('wingbits-cmd').classList.add('invalid');
   }
 }
 
 async function runWingbitsSetup() {
-  const url = document.getElementById('wingbits-url').value.trim();
-  if (!_wingbitsValidateUrl(url)) return;
+  const cmd = document.getElementById('wingbits-cmd').value.trim();
+  if (!_wingbitsValidateCmd(cmd)) return;
 
   const btn = document.getElementById('btn-wingbits-run');
   const output = document.getElementById('wingbits-output');
@@ -359,7 +360,7 @@ async function runWingbitsSetup() {
     const r = await fetch('/api/wingbits/setup', {
       method: 'POST',
       headers: { Authorization: `Bearer ${state.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ cmd }),
       signal: state.wingbitsAbort.signal,
     });
 
@@ -1260,7 +1261,7 @@ function wireEvents() {
   document.getElementById('btn-apply-band').addEventListener('click', applyBand);
 
   // Applications — Wingbits setup
-  document.getElementById('wingbits-url').addEventListener('input', _wingbitsUpdateBtn);
+  document.getElementById('wingbits-cmd').addEventListener('input', _wingbitsUpdateBtn);
   document.getElementById('btn-wingbits-run').addEventListener('click', runWingbitsSetup);
   document.getElementById('btn-wingbits-clear').addEventListener('click', clearWingbitsOutput);
 
