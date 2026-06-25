@@ -71,7 +71,7 @@ WINGBITS_URL_RE = re.compile(r"^https://gitlab\.com/wingbits/config/-/raw/")
 SHELL_META_RE = re.compile(r"[;&|`$()<>\n\r]")
 _wingbits_running = False
 
-TS_KEY_RE = re.compile(r"^tskey(-auth)?-[A-Za-z0-9]+")
+TS_KEY_RE = re.compile(r"^tskey(-auth)?-[A-Za-z0-9_-]+")
 CIDR_RE   = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$")
 ALLOWED_TAILSCALE_UNITS = ["readsb", "wingbits", "tailscaled", "kernel", "sshd", "pktfwd", "gateway-rs"]
 
@@ -707,7 +707,7 @@ def api_network_tailscale(_: Auth):
     }
 
 
-TS_KEY_VALID_RE = re.compile(r"^tskey(-auth)?-[A-Za-z0-9]+$")
+TS_KEY_VALID_RE = re.compile(r"^tskey(-auth)?-[A-Za-z0-9_-]+$")
 
 
 @app.post("/api/network/tailscale/connect")

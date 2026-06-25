@@ -630,7 +630,7 @@ function renderTailscaleOptions(d) {
 // ── Network — Tailscale Auth ─────────────────────────────────────────────────
 
 function _tsKeyValidate(key) {
-  return /^tskey(-auth)?-[A-Za-z0-9]+$/.test(key);
+  return /^tskey(-auth)?-[A-Za-z0-9_-]+$/.test(key);
 }
 
 function _tsKeyUpdateBtn() {
