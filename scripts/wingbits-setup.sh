@@ -53,24 +53,13 @@ fi
 echo "[INFO] Running Wingbits install script..."
 curl -sL "$WINGBITS_DOWNLOAD_URL" | loc="$LOC" id="$ID" bash
 
-# --- Patch /etc/default/readsb for beast mode ---
-READSB_DEFAULT="/etc/default/readsb"
-BEAST_OPTIONS="--net-connector localhost,30015,beast_reduce_out --net-beast-reduce-optimize-for-mlat --net-beast-reduce-interval=0.125"
-
-if [ -f "$READSB_DEFAULT" ]; then
-    if grep -qF "$BEAST_OPTIONS" "$READSB_DEFAULT"; then
-        echo "[OK] Beast mode already configured in ${READSB_DEFAULT}"
-    else
-        echo "[INFO] Adding beast mode options to ${READSB_DEFAULT}"
-        # Shell-quote safe replacement: append BEAST_OPTIONS to NET_OPTIONS
-        sed -i "s|^NET_OPTIONS=\\(.*\\)|NET_OPTIONS=\\1 $BEAST_OPTIONS|" "$READSB_DEFAULT"
-        echo "[OK] Beast mode options added"
-    fi
-else
-    echo "[WARN] ${READSB_DEFAULT} not found — creating"
-    echo "NET_OPTIONS=\"${BEAST_OPTIONS}\"" > "$READSB_DEFAULT"
-    echo "[OK] Created ${READSB_DEFAULT} with beast mode options"
-fi
+# Beast-mode flags for readsb are configured by the upstream Wingbits
+# install script (download.sh) at line 54 above — confirmed via direct
+# trace that this always completes synchronously before this point.
+# A redundant patch here was removed (it never ran in practice, since
+# the upstream script already wrote the matching flags every time, but
+# it was fragile and added no value). See project knowledge doc,
+# "readsb crash-loop" entry, for the full investigation.
 
 # --- Restart services ---
 echo "[INFO] Restarting readsb.service..."

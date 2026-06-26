@@ -511,14 +511,40 @@ def api_restart(_: Auth, service: str):
 
 # ── Wingbits ─────────────────────────────────────────────────────────────────
 
+CORRUPTION_RE = re.compile(r"--net-beast-reduce-interval=[0-9.]+--")
+
+
+def _check_readsb_corruption() -> str | None:
+    """Check if readsb is crash-looping due to known Wingbits auto-config bug."""
+    if not _service_installed("readsb.service"):
+        return None
+    info = _service_info("readsb.service")
+    if info["state"] == "active":
+        return None
+    rc, out, _ = _run(
+        ["journalctl", "-u", "readsb.service", "-n", "50", "--no-pager", "--output=cat"],
+        timeout=10,
+    )
+    if rc != 0:
+        return None
+    if CORRUPTION_RE.search(out):
+        return (
+            "readsb is crash-looping due to a known issue in the Wingbits "
+            "client's auto-configuration step corrupting its startup arguments. "
+            "This is an upstream Wingbits bug, not specific to this device. "
+            "ADS-B/Wingbits data is not being transmitted until this is resolved upstream."
+        )
+    return None
+
+
 @app.get("/api/wingbits")
 def api_wingbits(_: Auth):
     readsb_installed   = _service_installed("readsb.service")
     wingbits_installed = _service_installed("wingbits.service")
-    return {
-        "readsb":   _service_info("readsb.service")   if readsb_installed   else {"unit": "readsb.service",   "state": "not-installed", "since": ""},
-        "wingbits": _service_info("wingbits.service") if wingbits_installed else {"unit": "wingbits.service", "state": "not-installed", "since": ""},
-    }
+    readsb_info   = _service_info("readsb.service")   if readsb_installed   else {"unit": "readsb.service",   "state": "not-installed", "since": ""}
+    wingbits_info = _service_info("wingbits.service") if wingbits_installed else {"unit": "wingbits.service", "state": "not-installed", "since": ""}
+    readsb_info["diagnostic"] = _check_readsb_corruption()
+    return {"readsb": readsb_info, "wingbits": wingbits_info}
 
 
 def _parse_wingbits_cmd(cmd: str) -> tuple[str, str]:

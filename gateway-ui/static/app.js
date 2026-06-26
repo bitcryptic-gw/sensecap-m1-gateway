@@ -294,6 +294,14 @@ function renderWingbits(d) {
     overall.textContent = '● Degraded';
     overall.className = 'badge badge-yellow';
   }
+
+  const diag = document.getElementById('wingbits-diagnostic');
+  if (d.readsb.diagnostic) {
+    diag.innerHTML = `<span class="warn-text">⚠ ${d.readsb.diagnostic}</span>`;
+    diag.classList.remove('hidden');
+  } else {
+    diag.classList.add('hidden');
+  }
 }
 
 function wingbitsServiceRow(s) {
