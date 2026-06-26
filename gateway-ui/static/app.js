@@ -247,8 +247,14 @@ async function applyBand() {
   btn.textContent = 'Applying…';
   try {
     await api('/api/band', 'POST', { region });
+    // Re-fetch from backend so the UI reflects what was actually persisted
+    const [identity, bands] = await Promise.all([
+      api('/api/identity'),
+      api('/api/bands'),
+    ]);
+    renderAppIdentity(identity);
+    renderBands(bands);
     showResult('band-result', `Band set to ${region}`, false);
-    document.getElementById('current-band').textContent = region;
   } catch (e) {
     if (e.message !== 'unauthorized') showResult('band-result', e.message, true);
   } finally {

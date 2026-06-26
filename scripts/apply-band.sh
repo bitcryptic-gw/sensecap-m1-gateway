@@ -109,4 +109,16 @@ if systemctl is-active --quiet pktfwd.service 2>/dev/null; then
     echo "[apply-band] pktfwd.service restarted."
 fi
 
+# --- Persist band to config.env ---
+echo "[apply-band] Persisting BAND=${BAND} to ${ENV_FILE}"
+ENV_TMP="${ENV_FILE}.tmp"
+if [ -f "$ENV_FILE" ]; then
+    grep -v '^BAND=' "$ENV_FILE" > "$ENV_TMP" || true
+else
+    : > "$ENV_TMP"
+fi
+printf 'BAND=%s\n' "$BAND" >> "$ENV_TMP"
+mv "$ENV_TMP" "$ENV_FILE"
+echo "[apply-band] Persisted BAND=${BAND} to ${ENV_FILE}"
+
 echo "[apply-band] Done."

@@ -25,6 +25,18 @@ fi
 
 log "Starting SenseCap M1 first-boot initialisation..."
 
+# --- Ensure config.env exists ---
+if [ ! -f "$ENV_FILE" ]; then
+    EXAMPLE="/opt/gateway/config.env.example"
+    if [ -f "$EXAMPLE" ]; then
+        log "Creating ${ENV_FILE} from ${EXAMPLE}..."
+        cp "$EXAMPLE" "$ENV_FILE"
+    else
+        log "WARNING: No config.env.example found — creating empty config.env"
+        touch "$ENV_FILE"
+    fi
+fi
+
 # --- Source config.env ---
 BAND="au_915_928"
 GPS_LATITUDE=""
