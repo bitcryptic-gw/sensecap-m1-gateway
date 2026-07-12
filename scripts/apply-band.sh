@@ -52,10 +52,16 @@ GPS_LATITUDE=0
 GPS_LONGITUDE=0
 GPS_ALTITUDE=0
 
+# Save user-selected band before sourcing config.env;
+# config.env carries its own BAND= line which would overwrite it.
+USER_BAND="$BAND"
+
 if [ -f "$ENV_FILE" ]; then
     # shellcheck disable=SC1090
     source "$ENV_FILE"
 fi
+
+BAND="$USER_BAND"
 
 # Derive gateway_ID from eth0 MAC if not already set
 if [ -z "$GATEWAY_ID" ] && [ -f /sys/class/net/eth0/address ]; then
