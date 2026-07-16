@@ -14,11 +14,22 @@ if command -v tailscale &>/dev/null; then
     echo "[OK] Tailscale already installed: $(tailscale version 2>/dev/null | head -1)"
     systemctl enable --now tailscaled 2>/dev/null || true
 else
-    echo "[..] Downloading official install script..."
-    SCRIPT=$(curl -fsSL https://tailscale.com/install.sh) || {
-        echo "ERROR: Failed to fetch install script" >&2
+    MAX_RETRIES=3
+    unset SCRIPT
+    for attempt in $(seq 1 $MAX_RETRIES); do
+        echo "[..] Downloading official install script (attempt ${attempt}/${MAX_RETRIES})..."
+        if SCRIPT=$(curl -fsSL https://tailscale.com/install.sh); then
+            break
+        fi
+        if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+            delay=$((attempt * 5))
+            sleep "$delay"
+        fi
+    done
+    if [ -z "${SCRIPT:-}" ]; then
+        echo "ERROR: Failed to fetch Tailscale install script after ${MAX_RETRIES} attempts — check network connectivity" >&2
         exit 1
-    }
+    fi
 
     echo "$SCRIPT" | sh
 

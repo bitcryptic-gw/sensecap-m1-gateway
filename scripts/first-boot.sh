@@ -93,6 +93,15 @@ log "Setting hostname to: ${NEW_HOSTNAME}"
 echo "$NEW_HOSTNAME" > /etc/hostname
 hostnamectl set-hostname "$NEW_HOSTNAME" || true
 
+# Ensure /etc/hosts resolves the hostname locally (prevents sudo resolver warnings)
+if ! grep -q "^127\.0\.1\.1[[:space:]]" /etc/hosts; then
+    echo "127.0.1.1 ${NEW_HOSTNAME}" >> /etc/hosts
+    log "Added 127.0.1.1 ${NEW_HOSTNAME} to /etc/hosts"
+elif ! grep -q "^127\.0\.1\.1[[:space:]]\+${NEW_HOSTNAME}$" /etc/hosts; then
+    sed -i "s/^127\.0\.1\.1.*/127.0.1.1 ${NEW_HOSTNAME}/" /etc/hosts
+    log "Updated /etc/hosts 127.0.1.1 entry to ${NEW_HOSTNAME}"
+fi
+
 # --- Enable SPI and I2C ---
 log "Ensuring SPI and I2C are enabled..."
 raspi-config nonint do_spi 0  || log "WARNING: raspi-config do_spi failed (may already be enabled)"

@@ -144,8 +144,11 @@ echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: tailscale"
 echo "--- Tailscale ---"
 if [ -x "${REPO_DIR}/scripts/install-tailscale.sh" ]; then
-    "${REPO_DIR}/scripts/install-tailscale.sh"
-    green "Tailscale installed"
+    if "${REPO_DIR}/scripts/install-tailscale.sh"; then
+        green "Tailscale installed"
+    else
+        warn "Tailscale install failed — re-run manually: sudo ${REPO_DIR}/scripts/install-tailscale.sh"
+    fi
 else
     warn "install-tailscale.sh not found or not executable — skipping"
 fi
