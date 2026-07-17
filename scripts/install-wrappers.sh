@@ -6,22 +6,11 @@ set -e
 SCRIPTS_DIR="$(dirname "$(readlink -f "$0")")"
 INSTALL_DIR="/usr/local/bin"
 
-wrappers=(
-    ota-update-wrapper
-    system-power-wrapper
-    tailscale-wrapper
-    wingbits-setup-wrapper
-    wifi-toggle-wrapper
-)
-
 failed=0
-for name in "${wrappers[@]}"; do
-    src="$SCRIPTS_DIR/${name}.c"
+for src in "$SCRIPTS_DIR"/*-wrapper.c; do
+    [ -f "$src" ] || continue
+    name="$(basename "$src" .c)"
     bin="$INSTALL_DIR/${name}"
-    if [ ! -f "$src" ]; then
-        echo "WRAPPER: $name SKIPPED (source not found)"
-        continue
-    fi
     if gcc -O2 "$src" -o "$bin"; then
         chown root:root "$bin"
         chmod 4755 "$bin"
