@@ -69,6 +69,11 @@ static int run_capture(char *const argv[], char *buf, size_t bufsz) {
     return -1;
 }
 
+static void die(const char *call, const char *ctx) {
+    fprintf(stderr, "ERROR: %s failed at %s: %s\n", call, ctx, strerror(errno));
+    exit(1);
+}
+
 int main(int argc, char *argv[]) {
     struct passwd *pw = getpwnam("gateway-ui");
     if (!pw) {
@@ -85,10 +90,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Become root for filesystem ops */
-    setgroups(0, NULL);
-    setgid(0);
-    setuid(0);
+    /* ── Acquire root privilege (setuid binary starts euid=0, make it real) ── */
+    if (setgroups(0, NULL) != 0)
+        die("setgroups(0)", "initial privilege acquisition");
+    if (setegid(0) != 0)
+        die("setegid(0)", "initial privilege acquisition");
+    if (seteuid(0) != 0)
+        die("seteuid(0)", "initial privilege acquisition");
 
     /* Determine repo owner from /opt/gateway directory stat */
     struct stat st;
@@ -106,9 +114,10 @@ int main(int argc, char *argv[]) {
 
     /* ── --changes mode ─────────────────────────────────────────────────────── */
     if (strcmp(argv[1], "--changes") == 0) {
-        /* git operations as repo owner */
-        setuid(repo_owner);
-        setgid(0);
+        if (seteuid(repo_owner) != 0)
+            die("seteuid(repo_owner)", "--changes mode");
+        if (setegid(0) != 0)
+            die("setegid(0)", "--changes mode");
 
         int fetch_rc = run((char *[]){"/usr/bin/git", "fetch", "origin", NULL});
         if (fetch_rc != 0) {
@@ -171,14 +180,18 @@ int main(int argc, char *argv[]) {
     }
 
     /* git pull as repo owner */
-    setuid(repo_owner);
-    setgid(0);
+    if (seteuid(repo_owner) != 0)
+        die("seteuid(repo_owner)", "pre-pull privilege drop");
+    if (setegid(0) != 0)
+        die("setegid(0)", "pre-pull privilege drop");
 
     int pull_rc = run((char *[]){"/usr/bin/git", "pull", NULL});
 
-    /* Become root again */
-    setuid(0);
-    setgid(0);
+    /* Restore root */
+    if (seteuid(0) != 0)
+        die("seteuid(0)", "post-pull privilege restore");
+    if (setegid(0) != 0)
+        die("setegid(0)", "post-pull privilege restore");
 
     if (pull_rc != 0) {
         fprintf(stderr, "ERROR: git pull failed (exit %d)\n", pull_rc);
@@ -195,40 +208,50 @@ int main(int argc, char *argv[]) {
     }
 
     /* Fetch tags so git describe sees the latest release tag */
-    setuid(repo_owner);
-    setgid(0);
+    if (seteuid(repo_owner) != 0)
+        die("seteuid(repo_owner)", "tag fetch privilege drop");
+    if (setegid(0) != 0)
+        die("setegid(0)", "tag fetch privilege drop");
     run((char *[]){"/usr/bin/git", "fetch", "--tags", NULL});
-    setuid(0);
-    setgid(0);
+    if (seteuid(0) != 0)
+        die("seteuid(0)", "tag fetch privilege restore");
+    if (setegid(0) != 0)
+        die("setegid(0)", "tag fetch privilege restore");
 
-    /* Update /etc/gateway-version with new git describe output */
+    /* Capture version string (defer disk write until we know overall success) */
     char version[256] = "unknown";
-    setuid(repo_owner);
-    setgid(0);
+    if (seteuid(repo_owner) != 0)
+        die("seteuid(repo_owner)", "git describe privilege drop");
+    if (setegid(0) != 0)
+        die("setegid(0)", "git describe privilege drop");
     char describe_buf[256] = "";
     int describe_rc = run_capture(
         (char *[]){"/usr/bin/git", "-C", REPO_DIR, "describe", "--tags", "--always", NULL},
         describe_buf, sizeof(describe_buf));
-    setuid(0);
-    setgid(0);
+    if (seteuid(0) != 0)
+        die("seteuid(0)", "git describe privilege restore");
+    if (setegid(0) != 0)
+        die("setegid(0)", "git describe privilege restore");
 
     if (describe_rc == 0 && describe_buf[0]) {
         char *nl = strchr(describe_buf, '\n');
         if (nl) *nl = '\0';
         strncpy(version, describe_buf, sizeof(version) - 1);
         version[sizeof(version) - 1] = '\0';
-        FILE *vf = fopen("/etc/gateway-version", "w");
-        if (vf) {
-            fprintf(vf, "%s\n", version);
-            fclose(vf);
-        }
     } else {
         fprintf(stderr, "WARNING: git describe failed (exit %d) — /etc/gateway-version not updated\n", describe_rc);
     }
 
     /* ── Recompile all setuid wrappers ──────────────────────────────────────── */
-    /* Delegates to install-wrappers.sh which is the single source of truth */
-    run((char *[]){"/bin/bash", REPO_DIR "/scripts/install-wrappers.sh", NULL});
+    /* Delegates to install-wrappers.sh which is the single source of truth.
+       Fix up HOME and TMPDIR — the gateway-ui user has no real home directory,
+       which breaks gcc/ld even when running as root (privilege syscalls don't
+       touch environment variables). */
+    if (setenv("HOME", "/root", 1) != 0)
+        die("setenv(HOME)", "pre-wrapper environment fixup");
+    if (setenv("TMPDIR", "/tmp", 1) != 0)
+        die("setenv(TMPDIR)", "pre-wrapper environment fixup");
+    int wrapper_rc = run((char *[]){"/bin/bash", REPO_DIR "/scripts/install-wrappers.sh", NULL});
 
     /* Write diff to stdout */
     if (pre_head[0] && post_head[0] && strcmp(pre_head, post_head) != 0) {
@@ -247,12 +270,32 @@ int main(int argc, char *argv[]) {
     }
 
     /* Restart services as root */
+    int restart_failed = 0;
     for (int i = 0; i < svc_count; i++) {
         int rc = run((char *[]){"/usr/bin/systemctl", "restart", svc_list[i], NULL});
         printf("restarted %s (exit %d)\n", svc_list[i], rc);
+        if (rc != 0)
+            restart_failed = 1;
     }
 
-    printf("VERSION:%s\n", version);
+    /* Overall success: wrappers compiled AND all service restarts succeeded */
+    int overall_ok = (wrapper_rc == 0 && !restart_failed);
 
-    return 0;
+    if (overall_ok) {
+        FILE *vf = fopen("/etc/gateway-version", "w");
+        if (vf) {
+            fprintf(vf, "%s\n", version);
+            fclose(vf);
+        } else {
+            fprintf(stderr, "WARNING: cannot write /etc/gateway-version: %s\n", strerror(errno));
+        }
+        printf("VERSION:%s\n", version);
+    } else {
+        if (wrapper_rc != 0)
+            fprintf(stderr, "ERROR: wrapper recompilation failed (exit %d)\n", wrapper_rc);
+        if (restart_failed)
+            fprintf(stderr, "ERROR: one or more service restarts failed\n");
+    }
+
+    return overall_ok ? 0 : 1;
 }

@@ -14,6 +14,7 @@ wrappers=(
     wifi-toggle-wrapper
 )
 
+failed=0
 for name in "${wrappers[@]}"; do
     src="$SCRIPTS_DIR/${name}.c"
     bin="$INSTALL_DIR/${name}"
@@ -27,5 +28,7 @@ for name in "${wrappers[@]}"; do
         echo "WRAPPER: $name OK"
     else
         echo "WRAPPER: $name FAILED"
+        failed=1
     fi
 done
+exit "$failed"
