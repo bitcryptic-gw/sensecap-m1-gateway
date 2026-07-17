@@ -210,7 +210,9 @@ echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: gateway UI config"
 echo "--- OTA Log File ---"
 touch /var/log/gateway-ota.log
-if getent group gateway-ui &>/dev/null; then
+if id gateway-ui &>/dev/null; then
+    chown gateway-ui:gateway-ui /var/log/gateway-ota.log
+elif getent group gateway-ui &>/dev/null; then
     chown root:gateway-ui /var/log/gateway-ota.log
 else
     chown root:root /var/log/gateway-ota.log
