@@ -811,14 +811,24 @@ async function checkOtaChanges() {
 }
 
 function updateOtaConfirmBtn() {
+  const btn = document.getElementById('btn-ota-update');
+  const d = state.otaChanges;
+  if (!d) { btn.disabled = true; return; }
+  if (d.affected_groups && d.affected_groups.length === 0) { btn.disabled = false; return; }
   const checks = document.querySelectorAll('.ota-svc-check:checked');
-  document.getElementById('btn-ota-update').disabled = checks.length === 0;
+  btn.disabled = checks.length === 0;
 }
 
 async function runOtaUpdate() {
   const checks = document.querySelectorAll('.ota-svc-check:checked');
-  if (checks.length === 0) return;
-  const services = Array.from(checks).flatMap(cb => cb.dataset.services.split(','));
+  let services;
+  if (checks.length > 0) {
+    services = Array.from(checks).flatMap(cb => cb.dataset.services.split(','));
+  } else if (state.otaChanges && state.otaChanges.affected_groups && state.otaChanges.affected_groups.length === 0) {
+    services = ['gateway-ui.service'];
+  } else {
+    return;
+  }
   const btn = document.getElementById('btn-ota-update');
   const output = document.getElementById('ota-output');
   btn.disabled = true;

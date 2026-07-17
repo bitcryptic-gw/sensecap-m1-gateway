@@ -251,7 +251,7 @@ int main(int argc, char *argv[]) {
         die("setenv(HOME)", "pre-wrapper environment fixup");
     if (setenv("TMPDIR", "/tmp", 1) != 0)
         die("setenv(TMPDIR)", "pre-wrapper environment fixup");
-    int wrapper_rc = run((char *[]){"/bin/bash", REPO_DIR "/scripts/install-wrappers.sh", NULL});
+    int wrapper_rc = run((char *[]){"/bin/bash", "-p", REPO_DIR "/scripts/install-wrappers.sh", NULL});
 
     /* Write diff to stdout */
     if (pre_head[0] && post_head[0] && strcmp(pre_head, post_head) != 0) {
@@ -267,6 +267,29 @@ int main(int argc, char *argv[]) {
         }
     } else {
         printf("(no changes)\n");
+    }
+
+    // TODO: move to a sibling cgroup under system.slice rather than
+    // the root cgroup, so the OTA process remains under normal systemd
+    // resource accounting and cgroup hygiene (root cgroup is a
+    // deliberate short-term simplification — tracked in project backlog).
+    /* Escape gateway-ui.service's cgroup before restarting any services.
+       gateway-ui.service has no explicit KillMode= (defaults to
+       control-group), so systemctl restart gateway-ui.service sends
+       SIGTERM to every process in its cgroup — including us, since we
+       were spawned as its child. We must move out before restarting
+       anything, or we (and our own exit code) get killed along with it. */
+    {
+        FILE *cgf = fopen("/sys/fs/cgroup/cgroup.procs", "w");
+        if (cgf) {
+            fprintf(cgf, "0\n");
+            fclose(cgf);
+        } else {
+            fprintf(stderr, "WARNING: could not detach from gateway-ui.service's "
+                            "cgroup (%s) — restarting gateway-ui.service may kill "
+                            "this process before it can report a final result\n",
+                            strerror(errno));
+        }
     }
 
     /* Restart services as root */
