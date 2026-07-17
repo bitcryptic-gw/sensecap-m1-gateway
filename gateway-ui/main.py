@@ -66,6 +66,7 @@ NTFY_TOPIC_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 ALLOWED_ALERT_KEYS = {
     "update_available", "helium_fault", "wingbits_fault",
     "cpu_temp", "ram", "storage", "reboot", "shutdown",
+    "tailscale_hostname_mismatch",
 }
 SHELL_META_RE = re.compile(r"[;&|`$()<>\n\r]")
 WINGBITS_DOWNLOAD_URL = "https://gitlab.com/wingbits/config/-/raw/master/download.sh"
@@ -415,7 +416,8 @@ def api_sysinfo(_: Auth):
             except (ValueError, TypeError):
                 pass
 
-    return {
+    ts_mismatch, sys_hostname, ts_hostname_actual = _check_tailscale_hostname_mismatch()
+    result = {
         "cpu_temp":      cpu,
         "memory":        mem_str,
         "disk":          disk_str,
@@ -423,7 +425,11 @@ def api_sysinfo(_: Auth):
         "cpu_temp_raw":  cpu_raw,
         "mem_used_pct":  mem_pct,
         "disk_used_pct": disk_pct,
+        "tailscale_hostname_mismatch": ts_mismatch,
     }
+    if ts_mismatch:
+        result["tailscale_hostname_actual"] = ts_hostname_actual
+    return result
 
 
 @app.get("/api/beacon")
@@ -689,6 +695,7 @@ def api_network_interfaces(_: Auth):
 # ── Network — WiFi Toggle ────────────────────────────────────────────────────
 
 WIFI_WRAPPER = "/usr/local/bin/wifi-toggle-wrapper"
+WIFI_CONNECT_WRAPPER = "/usr/local/bin/wifi-connect-wrapper"
 
 
 @app.post("/api/network/wifi")
@@ -706,7 +713,153 @@ async def api_network_wifi(_: Auth, request: Request):
     return {"wifi_enabled": enabled}
 
 
+# ── Network — WiFi Scan ──────────────────────────────────────────────────────
+
+@app.get("/api/network/wifi/scan")
+async def api_network_wifi_scan(_: Auth):
+    if not Path("/usr/bin/nmcli").exists():
+        return {"available": False, "networks": []}
+    rc, radio_out, _ = await _run_async(["/usr/bin/nmcli", "radio", "wifi"], timeout=5)
+    wifi_disabled = not (rc == 0 and radio_out.strip().lower() == "enabled")
+    rc2, dev_out, _ = await _run_async(["/usr/bin/nmcli", "device", "status"], timeout=5)
+    wlan_present = "wlan0" in (dev_out if rc2 == 0 else "")
+    if not wlan_present:
+        wifi_disabled = True
+    if wifi_disabled:
+        return {"available": False, "networks": []}
+
+    await _run_async(["/usr/bin/nmcli", "device", "wifi", "rescan"], timeout=15)
+    rc3, out, _ = await _run_async(
+        ["/usr/bin/nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list"],
+        timeout=15,
+    )
+    if rc3 != 0:
+        return {"available": True, "networks": []}
+
+    seen: dict[str, int] = {}
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(":")
+        ssid = parts[0] if len(parts) > 0 else ""
+        if not ssid:
+            continue
+        try:
+            sig = int(parts[1]) if len(parts) > 1 else 0
+            if ssid not in seen or sig > seen[ssid]:
+                seen[ssid] = sig
+        except (ValueError, IndexError):
+            pass
+
+    networks = [
+        {"ssid": ssid, "signal": sig}
+        for ssid, sig in sorted(seen.items(), key=lambda x: -x[1])
+    ]
+    return {"available": True, "networks": networks}
+
+
+# ── Network — WiFi Saved ─────────────────────────────────────────────────────
+
+@app.get("/api/network/wifi/saved")
+def api_network_wifi_saved(_: Auth):
+    if not Path("/usr/bin/nmcli").exists():
+        return {"saved": []}
+    rc, out, _ = _run(
+        ["/usr/bin/nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+        timeout=10,
+    )
+    if rc != 0:
+        return {"saved": []}
+    saved = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(":")
+        name = parts[0] if len(parts) > 0 else ""
+        ctype = parts[1] if len(parts) > 1 else ""
+        if "wireless" in ctype.lower() or "wifi" in ctype.lower():
+            saved.append({"name": name, "type": ctype})
+    return {"saved": saved}
+
+
+# ── Network — WiFi Connect ───────────────────────────────────────────────────
+
+@app.post("/api/network/wifi/connect")
+async def api_network_wifi_connect(_: Auth, request: Request):
+    if not Path(WIFI_CONNECT_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="wifi-connect-wrapper not installed")
+    body = await request.json()
+    ssid = str(body.get("ssid", "")).strip()
+    password = str(body.get("password", ""))
+    if not ssid:
+        raise HTTPException(status_code=422, detail="ssid is required")
+    if len(ssid) > 128:
+        raise HTTPException(status_code=422, detail="ssid too long")
+    if not password:
+        raise HTTPException(status_code=422, detail="password is required")
+    if len(password) > 128:
+        raise HTTPException(status_code=422, detail="password too long")
+    rc, out, err = await _run_async(
+        [WIFI_CONNECT_WRAPPER, "connect", ssid, password], timeout=35,
+    )
+    if rc != 0:
+        detail = err.strip() or out.strip() or "connection failed"
+        raise HTTPException(status_code=500, detail=detail)
+    return {"ok": True}
+
+
+@app.post("/api/network/wifi/connect-saved")
+async def api_network_wifi_connect_saved(_: Auth, request: Request):
+    if not Path(WIFI_CONNECT_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="wifi-connect-wrapper not installed")
+    body = await request.json()
+    name = str(body.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+    if len(name) > 128:
+        raise HTTPException(status_code=422, detail="name too long")
+    rc, out, err = await _run_async(
+        [WIFI_CONNECT_WRAPPER, "connect-saved", name], timeout=35,
+    )
+    if rc != 0:
+        detail = err.strip() or out.strip() or "connection failed"
+        raise HTTPException(status_code=500, detail=detail)
+    return {"ok": True}
+
+
 # ── Network — Tailscale ──────────────────────────────────────────────────────
+
+def _check_tailscale_hostname_mismatch() -> tuple[bool, str, str | None]:
+    system_hostname = socket.gethostname()
+    if not Path(_TAILSCALE).exists():
+        return False, system_hostname, None
+    if not _service_installed("tailscaled.service"):
+        return False, system_hostname, None
+    ts_info = _service_info("tailscaled.service")
+    if ts_info["state"] != "active":
+        return False, system_hostname, None
+    try:
+        rc, out, _ = _run([_TAILSCALE, "status", "--json"])
+        if rc != 0:
+            return False, system_hostname, None
+        data = json.loads(out)
+    except (json.JSONDecodeError, OSError):
+        return False, system_hostname, None
+    self_info = data.get("Self", {})
+    if not isinstance(self_info, dict):
+        return False, system_hostname, None
+    ts_hostname = self_info.get("HostName", "")
+    if not ts_hostname:
+        return False, system_hostname, None
+    m = re.match(r"^(.+)-\d+$", ts_hostname)
+    if not m:
+        return False, system_hostname, None
+    if m.group(1) != system_hostname:
+        return False, system_hostname, None
+    return True, system_hostname, ts_hostname
+
 
 @app.get("/api/network/tailscale")
 def api_network_tailscale(_: Auth):
@@ -758,7 +911,8 @@ def api_network_tailscale(_: Auth):
     if rc4 == 0:
         version = ver_out.splitlines()[0].strip() if ver_out.strip() else "unknown"
 
-    return {
+    ts_mismatch, _, ts_hostname_actual = _check_tailscale_hostname_mismatch()
+    result = {
         "status": "connected",
         "connected": True,
         "online": online,
@@ -769,7 +923,11 @@ def api_network_tailscale(_: Auth):
         "subnet_routing_enabled": bool(advertised),
         "advertised_routes": advertised,
         "ssh_enabled": ssh_enabled,
+        "tailscale_hostname_mismatch": ts_mismatch,
     }
+    if ts_mismatch:
+        result["tailscale_hostname_actual"] = ts_hostname_actual
+    return result
 
 
 TS_KEY_VALID_RE = re.compile(r"^tskey(-auth)?-[A-Za-z0-9_-]+$")
@@ -1198,6 +1356,7 @@ _ntfy_state: dict = {
     "ram_alert": None,
     "storage_alert": None,
     "last_update_version": None,
+    "tailscale_hostname_mismatch": None,
 }
 _ntfy_first_run: bool = True
 
@@ -1296,6 +1455,9 @@ async def _ntfy_notifier():
                 if wgs != "optional":
                     _ntfy_state["wingbits_fault"] = (wgs == "fault")
 
+                ts_mismatch, _, _ = _check_tailscale_hostname_mismatch()
+                _ntfy_state["tailscale_hostname_mismatch"] = ts_mismatch
+
                 _ntfy_first_run = False
                 await asyncio.sleep(60)
                 continue
@@ -1353,6 +1515,29 @@ async def _ntfy_notifier():
                                 ["green_circle", "wingbits"],
                             )
                         _ntfy_state["wingbits_fault"] = current_wf
+
+            # ── Check: tailscale_hostname_mismatch ─────────────────────────
+            if "tailscale_hostname_mismatch" in enabled_alerts:
+                ts_mismatch, sys_hostname, ts_hostname = _check_tailscale_hostname_mismatch()
+                if ts_mismatch != _ntfy_state["tailscale_hostname_mismatch"]:
+                    if ts_mismatch:
+                        await send_ntfy(
+                            "Tailscale Hostname Mismatch",
+                            f"System hostname: {sys_hostname}\n"
+                            f"Tailscale hostname: {ts_hostname}\n"
+                            f"Device was likely re-flashed — Tailscale auto-renamed it.\n"
+                            f"Remove stale duplicate entries: https://login.tailscale.com/admin/machines",
+                            "high",
+                            ["warning", "tailscale"],
+                        )
+                    else:
+                        await send_ntfy(
+                            "Tailscale Hostname Resolved",
+                            f"Hostname mismatch resolved on {sys_hostname}.",
+                            "default",
+                            ["white_check_mark", "tailscale"],
+                        )
+                    _ntfy_state["tailscale_hostname_mismatch"] = ts_mismatch
 
             # ── Check: cpu_temp ───────────────────────────────────────────
             if "cpu_temp" in enabled_alerts and cpu_raw is not None:

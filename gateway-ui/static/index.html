@@ -201,10 +201,21 @@
           <div id="wlan0-wifi-warning" class="card-body hidden">
             <span class="warn-text">⚠ Wired connection not detected — disabling WiFi may disconnect you</span>
           </div>
+          <div id="wifi-networks-section" class="card-body hidden">
+            <div id="wifi-saved-section" class="hidden"></div>
+            <div id="wifi-scan-section" class="hidden">
+              <div class="wifi-scan-header">
+                <span class="kv-label">Available networks</span>
+                <button id="btn-wifi-refresh" class="btn btn-sm">Refresh</button>
+              </div>
+              <div id="wifi-scan-list"></div>
+            </div>
+          </div>
         </div>
         <div class="card">
           <div class="card-header">Tailscale</div>
           <div class="card-body" id="iface-tailscale"><div class="spinner"></div></div>
+          <div id="tailscale-mismatch-banner" class="tailscale-mismatch-banner hidden"></div>
         </div>
       </div>
 
@@ -409,6 +420,7 @@
               <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="storage"> <span>Storage usage</span></label>
               <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="reboot"> <span>Reboot triggered</span></label>
               <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="shutdown"> <span>Shutdown triggered</span></label>
+              <label class="ntfy-check-row"><input type="checkbox" class="ntfy-alert-check" data-key="tailscale_hostname_mismatch"> <span>Tailscale hostname mismatch</span></label>
             </div>
             <div class="action-row">
               <button id="btn-ntfy-save-alerts" class="btn btn-primary">Save Alerts</button>

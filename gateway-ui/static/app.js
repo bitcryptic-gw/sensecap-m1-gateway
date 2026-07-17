@@ -446,6 +446,8 @@ function clearWingbitsOutput() {
 function renderSysinfo(d, showHostname) {
   const el = document.getElementById('sysinfo-body');
 
+  if (d.hostname) state.sysHostname = d.hostname;
+
   function barPctClass(pct) {
     if (pct >= 90) return 'util-bar-red';
     if (pct >= 70) return 'util-bar-amber';
@@ -521,14 +523,23 @@ function startNetworkRefresh() {
 }
 
 async function loadNetwork() {
-  const [ifaces, ts] = await Promise.allSettled([
+  const [ifaces, ts, scan, saved] = await Promise.allSettled([
     api('/api/network/interfaces'),
     api('/api/network/tailscale'),
+    api('/api/network/wifi/scan'),
+    api('/api/network/wifi/saved'),
   ]);
   if (ifaces.status === 'fulfilled') renderInterfaces(ifaces.value);
   if (ts.status     === 'fulfilled') {
     renderTailscaleInterface(ts.value);
     renderTailscaleOptions(ts.value);
+  }
+  if (ifaces.status === 'fulfilled') {
+    renderWifiNetworks(
+      scan.status === 'fulfilled' ? scan.value : null,
+      saved.status === 'fulfilled' ? saved.value : null,
+      ifaces.value.wlan0 || {}
+    );
   }
 }
 
@@ -570,23 +581,208 @@ function renderInterfaces(d) {
 }
 
 
+// ── Network — WiFi Scan & Saved ──────────────────────────────────────────────
+
+function _wifiSigClass(signal) {
+  if (signal >= 70) return 'wifi-signal-3';
+  if (signal >= 50) return 'wifi-signal-2';
+  if (signal >= 30) return 'wifi-signal-1';
+  return 'wifi-signal-0';
+}
+
+function _wifiSigBar(signal) {
+  const bars = signal >= 70 ? '●●●●' : signal >= 50 ? '●●●○' : signal >= 30 ? '●●○○' : '●○○○';
+  return `<span class="wifi-signal ${_wifiSigClass(signal)}">${bars} ${signal}%</span>`;
+}
+
+function renderWifiNetworks(scanData, savedData, wlan0) {
+  const section = document.getElementById('wifi-networks-section');
+  const savedSection = document.getElementById('wifi-saved-section');
+  const scanSection = document.getElementById('wifi-scan-section');
+  const scanList = document.getElementById('wifi-scan-list');
+
+  const wifiOn = wlan0.wifi_enabled === true;
+
+  if (!wifiOn) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+
+  const saved = (savedData && savedData.saved) ? savedData.saved : [];
+  if (saved.length > 0) {
+    savedSection.classList.remove('hidden');
+    savedSection.innerHTML = '<div class="wifi-scan-header"><span class="kv-label">Saved networks</span></div>' +
+      saved.map(s => `
+        <div class="wifi-network-row">
+          <span class="wifi-network-info"><code>${s.name}</code></span>
+          <button class="btn btn-sm btn-saved-connect" data-name="${s.name}">Connect</button>
+        </div>
+      `).join('');
+  } else {
+    savedSection.classList.add('hidden');
+  }
+
+  const available = (scanData && scanData.available) ? scanData : null;
+  const networks = (available && available.networks) ? available.networks : [];
+
+  scanSection.classList.remove('hidden');
+
+  if (networks.length === 0) {
+    scanList.innerHTML = '<div class="hint mt-sm">No networks found</div>';
+  } else {
+    scanList.innerHTML = networks.map(n => `
+      <div class="wifi-network-row">
+        <span class="wifi-network-info">${_wifiSigBar(n.signal)} <code>${n.ssid}</code></span>
+        <button class="btn btn-sm btn-wifi-connect" data-ssid="${n.ssid}">Connect</button>
+      </div>
+    `).join('');
+  }
+
+  const rows = document.querySelectorAll('.btn-wifi-connect');
+  rows.forEach(btn => {
+    btn.addEventListener('click', () => _wifiShowPassword(btn));
+  });
+
+  document.querySelectorAll('.btn-saved-connect').forEach(btn => {
+    btn.addEventListener('click', () => _wifiConnectSaved(btn));
+  });
+}
+
+
+function _wifiShowPassword(btn) {
+  const row = btn.closest('.wifi-network-row');
+  if (!row) return;
+  const existing = row.nextElementSibling;
+  if (existing && existing.classList.contains('wifi-connect-inline')) {
+    existing.remove();
+    btn.textContent = 'Connect';
+    return;
+  }
+  btn.textContent = 'Cancel';
+  const ssid = btn.dataset.ssid;
+  const inline = document.createElement('div');
+  inline.className = 'wifi-connect-inline';
+  inline.innerHTML = `
+    <div class="wifi-connect-row">
+      <input type="password" class="wingbits-input" placeholder="Password" autocomplete="off" spellcheck="false" style="max-width:200px">
+      <button class="btn btn-sm btn-primary btn-wifi-submit" data-ssid="${ssid}">Join</button>
+    </div>
+    <span class="wifi-connect-msg"></span>
+  `;
+  row.after(inline);
+
+  const input = inline.querySelector('input');
+  const submit = inline.querySelector('.btn-wifi-submit');
+  const msg = inline.querySelector('.wifi-connect-msg');
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') submit.click();
+  });
+
+  submit.addEventListener('click', async () => {
+    const password = input.value;
+    if (!password) {
+      msg.textContent = 'Password required';
+      msg.className = 'wifi-connect-msg result-error';
+      return;
+    }
+    submit.disabled = true;
+    input.disabled = true;
+    msg.textContent = 'Connecting\u2026';
+    msg.className = 'wifi-connect-msg dim';
+
+    try {
+      const resp = await fetch('/api/network/wifi/connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + state.token,
+        },
+        body: JSON.stringify({ ssid, password }),
+      });
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.detail || 'HTTP ' + resp.status);
+      }
+      inline.remove();
+      btn.textContent = 'Connect';
+      msg.textContent = '';
+      setTimeout(loadNetwork, 2000);
+    } catch (err) {
+      msg.textContent = 'Error \u2014 ' + err.message;
+      msg.className = 'wifi-connect-msg result-error';
+      submit.disabled = false;
+      input.disabled = false;
+    }
+  });
+}
+
+
+async function _wifiConnectSaved(btn) {
+  const name = btn.dataset.name;
+  if (!name) return;
+  const row = btn.closest('.wifi-network-row');
+  let msgEl = row ? row.nextElementSibling : null;
+  if (!msgEl || !msgEl.classList.contains('wifi-connect-msg')) {
+    msgEl = document.createElement('span');
+    msgEl.className = 'wifi-connect-msg';
+    if (row && row.parentNode) {
+      row.parentNode.insertBefore(msgEl, row.nextSibling);
+    }
+  }
+
+  btn.disabled = true;
+  msgEl.textContent = 'Connecting\u2026';
+  msgEl.className = 'wifi-connect-msg dim';
+
+  try {
+    const resp = await fetch('/api/network/wifi/connect-saved', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + state.token,
+      },
+      body: JSON.stringify({ name }),
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.detail || 'HTTP ' + resp.status);
+    }
+    msgEl.textContent = 'Done';
+    msgEl.className = 'wifi-connect-msg result-ok';
+    setTimeout(() => { msgEl.textContent = ''; }, 2000);
+    setTimeout(loadNetwork, 2000);
+  } catch (err) {
+    msgEl.textContent = 'Error \u2014 ' + err.message;
+    msgEl.className = 'wifi-connect-msg result-error';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+
 
 // ── Network — Tailscale Interface Card ───────────────────────────────────────
 
 function renderTailscaleInterface(d) {
   const el = document.getElementById('iface-tailscale');
+  const banner = document.getElementById('tailscale-mismatch-banner');
   if (d.status === 'not-installed') {
     el.innerHTML = '<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-dim">○ Not installed</span></div>' +
       '<p class="hint mt">Run <code>sudo /opt/gateway/scripts/install-tailscale.sh</code> to install.</p>';
+    banner.classList.add('hidden');
     return;
   }
   if (d.status === 'stopped') {
     el.innerHTML = '<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● Stopped</span></div>' +
       '<p class="hint mt">Start with <code>sudo systemctl start tailscaled</code>.</p>';
+    banner.classList.add('hidden');
     return;
   }
   if (d.status !== 'connected') {
     el.innerHTML = `<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● ${d.status}</span></div>`;
+    banner.classList.add('hidden');
     return;
   }
   const onlineLabel = d.online
@@ -600,6 +796,14 @@ function renderTailscaleInterface(d) {
     ['Subnet Routing', d.subnet_routing_enabled ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-dim">Disabled</span>'],
     ['Tailscale SSH', d.ssh_enabled ? '<span class="badge badge-green">Enabled</span>' : '<span class="badge badge-dim">Disabled</span>'],
   ]);
+
+  if (d.tailscale_hostname_mismatch && d.tailscale_hostname_actual) {
+    const sysHost = state.sysHostname || 'unknown';
+    banner.innerHTML = `Tailscale hostname mismatch detected — this device is registered as <code>${d.tailscale_hostname_actual}</code> but its system hostname is <code>${sysHost}</code>. This usually means the device was re-flashed and Tailscale auto-renamed it to avoid colliding with a stale prior registration. <a href="https://login.tailscale.com/admin/machines" target="_blank" rel="noopener">Open Tailscale admin console to remove the old entry.</a>`;
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
 }
 
 // ── Network — Tailscale Options Card ─────────────────────────────────────────
@@ -1362,6 +1566,9 @@ function wireEvents() {
 
   // Network — Port
   document.getElementById('btn-save-port').addEventListener('click', savePort);
+
+  // Network — WiFi scan refresh
+  document.getElementById('btn-wifi-refresh').addEventListener('click', loadNetwork);
 
   // Logs
   document.getElementById('btn-refresh-logs').addEventListener('click', loadLogs);

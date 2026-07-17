@@ -600,6 +600,88 @@ html, body {
   color: var(--red);
 }
 
+/* ── Tailscale hostname mismatch banner ──────────────────────────────────── */
+.tailscale-mismatch-banner {
+  margin-top: .75rem;
+  padding: .6rem .8rem;
+  border-radius: var(--radius);
+  font-size: .85rem;
+  line-height: 1.6;
+  background: rgba(245,166,35,.07);
+  border: 1px solid rgba(245,166,35,.3);
+  color: var(--yellow);
+}
+.tailscale-mismatch-banner.hidden { display: none; }
+.tailscale-mismatch-banner a { color: var(--cyan); }
+
+/* ── WiFi networks ───────────────────────────────────────────────────────── */
+.wifi-scan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .5rem;
+}
+
+.wifi-network-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .4rem 0;
+  border-bottom: 1px solid var(--border);
+  gap: .5rem;
+}
+.wifi-network-row:last-child { border-bottom: none; }
+
+.wifi-network-info {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .85rem;
+}
+
+.wifi-signal {
+  font-size: .75rem;
+  font-family: var(--mono);
+  min-width: 3em;
+}
+
+.wifi-signal-3 { color: var(--green); }
+.wifi-signal-2 { color: var(--green); }
+.wifi-signal-1 { color: var(--yellow); }
+.wifi-signal-0 { color: var(--red); }
+
+.wifi-connect-inline {
+  margin-top: .3rem;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+
+.wifi-connect-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.wifi-connect-row input[type="password"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .82rem;
+  padding: .35rem .55rem;
+  outline: none;
+  flex: 1;
+  max-width: 220px;
+}
+.wifi-connect-row input[type="password"]:focus { border-color: var(--blue); }
+
+.wifi-connect-msg {
+  font-size: .78rem;
+  min-width: 6em;
+}
+
 /* ── Wingbits tab ──────────────────────────────────────────────────────────── */
 .wingbits-intro {
   font-size: .85rem;
