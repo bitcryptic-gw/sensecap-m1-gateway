@@ -611,14 +611,37 @@ function renderWifiNetworks(scanData, savedData, wlan0) {
 
   const saved = (savedData && savedData.saved) ? savedData.saved : [];
   if (saved.length > 0) {
+    const maxTs = Math.max(...saved.map(s => s.timestamp || 0));
+    const now = Date.now() / 1000;
     savedSection.classList.remove('hidden');
     savedSection.innerHTML = '<div class="wifi-scan-header"><span class="kv-label">Saved networks</span></div>' +
-      saved.map(s => `
-        <div class="wifi-network-row">
-          <span class="wifi-network-info"><code>${s.name}</code></span>
-          <button class="btn btn-sm btn-saved-connect" data-name="${s.name}">Connect</button>
-        </div>
-      `).join('');
+      saved.map(s => {
+        let timeLabel = '';
+        let prefTag = '';
+        if (!s.timestamp) {
+          timeLabel = '<span class="dim">Never connected</span>';
+        } else {
+          const diff = now - s.timestamp;
+          let rel;
+          if (diff < 60) rel = 'just now';
+          else if (diff < 3600) rel = Math.round(diff / 60) + 'm ago';
+          else if (diff < 86400) rel = Math.round(diff / 3600) + 'h ago';
+          else rel = Math.round(diff / 86400) + 'd ago';
+          timeLabel = '<span class="dim">Last: ' + rel + '</span>';
+          if (s.timestamp === maxTs && maxTs > 0) {
+            prefTag = ' <span class="badge badge-info" style="font-size:.65rem">Preferred</span>';
+          }
+        }
+        return `
+          <div class="wifi-network-row">
+            <div class="wifi-network-info"><div><code>${s.name}</code>${prefTag}</div>${timeLabel}</div>
+            <div>
+              <button class="btn btn-sm btn-saved-connect" data-name="${s.name}">Connect</button>
+              <button class="btn btn-sm btn-amber btn-saved-forget" data-name="${s.name}">Forget</button>
+            </div>
+          </div>
+        `;
+      }).join('');
   } else {
     savedSection.classList.add('hidden');
   }
@@ -633,8 +656,8 @@ function renderWifiNetworks(scanData, savedData, wlan0) {
   } else {
     scanList.innerHTML = networks.map(n => `
       <div class="wifi-network-row">
-        <span class="wifi-network-info">${_wifiSigBar(n.signal)} <code>${n.ssid}</code></span>
-        <button class="btn btn-sm btn-wifi-connect" data-ssid="${n.ssid}">Connect</button>
+        <span class="wifi-network-info">${_wifiSigBar(n.signal)} <code>${n.ssid}</code>${n.open ? ' <span class="dim">(open)</span>' : ''}</span>
+        <button class="btn btn-sm btn-wifi-connect" data-ssid="${n.ssid}"${n.open ? ' data-open="1"' : ''}>Connect</button>
       </div>
     `).join('');
   }
@@ -647,12 +670,21 @@ function renderWifiNetworks(scanData, savedData, wlan0) {
   document.querySelectorAll('.btn-saved-connect').forEach(btn => {
     btn.addEventListener('click', () => _wifiConnectSaved(btn));
   });
+
+  document.querySelectorAll('.btn-saved-forget').forEach(btn => {
+    btn.addEventListener('click', () => _wifiShowForgetConfirm(btn));
+  });
 }
 
 
 function _wifiShowPassword(btn) {
   const row = btn.closest('.wifi-network-row');
   if (!row) return;
+
+  if (btn.dataset.open === '1') {
+    _wifiConnectOpen(btn);
+    return;
+  }
   const existing = row.nextElementSibling;
   if (existing && existing.classList.contains('wifi-connect-inline')) {
     existing.remove();
@@ -666,8 +698,9 @@ function _wifiShowPassword(btn) {
   inline.innerHTML = `
     <div class="wifi-connect-row">
       <input type="password" class="wingbits-input" placeholder="Password" autocomplete="off" spellcheck="false" style="max-width:200px">
-      <button class="btn btn-sm btn-primary btn-wifi-submit" data-ssid="${ssid}">Join</button>
+      <button class="btn btn-sm btn-primary btn-wifi-submit" data-ssid="${ssid}" disabled>Join</button>
     </div>
+    <span class="hint" style="font-size:.72rem">8\u201363 characters</span>
     <span class="wifi-connect-msg"></span>
   `;
   row.after(inline);
@@ -678,6 +711,10 @@ function _wifiShowPassword(btn) {
 
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') submit.click();
+  });
+
+  input.addEventListener('input', () => {
+    submit.disabled = (input.value.length < 8);
   });
 
   submit.addEventListener('click', async () => {
@@ -716,6 +753,49 @@ function _wifiShowPassword(btn) {
       input.disabled = false;
     }
   });
+}
+
+
+async function _wifiConnectOpen(btn) {
+  const ssid = btn.dataset.ssid;
+  if (!ssid) return;
+  const row = btn.closest('.wifi-network-row');
+  let msgEl = row ? row.nextElementSibling : null;
+  if (!msgEl || !msgEl.classList.contains('wifi-connect-msg')) {
+    msgEl = document.createElement('span');
+    msgEl.className = 'wifi-connect-msg';
+    if (row && row.parentNode) {
+      row.parentNode.insertBefore(msgEl, row.nextSibling);
+    }
+  }
+
+  btn.disabled = true;
+  msgEl.textContent = 'Connecting\u2026';
+  msgEl.className = 'wifi-connect-msg dim';
+
+  try {
+    const resp = await fetch('/api/network/wifi/connect', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + state.token,
+      },
+      body: JSON.stringify({ ssid, password: '' }),
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.detail || 'HTTP ' + resp.status);
+    }
+    msgEl.textContent = 'Done';
+    msgEl.className = 'wifi-connect-msg result-ok';
+    setTimeout(() => { msgEl.textContent = ''; }, 2000);
+    setTimeout(loadNetwork, 2000);
+  } catch (err) {
+    msgEl.textContent = 'Error \u2014 ' + err.message;
+    msgEl.className = 'wifi-connect-msg result-error';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 
@@ -761,6 +841,81 @@ async function _wifiConnectSaved(btn) {
   }
 }
 
+
+function _wifiShowForgetConfirm(btn) {
+  const row = btn.closest('.wifi-network-row');
+  if (!row) return;
+  const existing = row.querySelector('.wifi-forget-confirm');
+  if (existing) {
+    existing.remove();
+    btn.textContent = 'Forget';
+    return;
+  }
+  btn.textContent = 'Cancel';
+  const name = btn.dataset.name;
+  const confirm = document.createElement('div');
+  confirm.className = 'wifi-forget-confirm';
+  confirm.style.marginTop = '.3rem';
+  confirm.innerHTML = `
+    <span class="warn-text">Forget this network?</span>
+    <button class="btn btn-sm btn-danger btn-wifi-forget-exec" data-name="${name}">Forget</button>
+    <a href="#" class="confirm-cancel">&nbsp;Cancel</a>
+  `;
+  row.after(confirm);
+
+  confirm.querySelector('.confirm-cancel').addEventListener('click', e => {
+    e.preventDefault();
+    confirm.remove();
+    btn.textContent = 'Forget';
+  });
+
+  confirm.querySelector('.btn-wifi-forget-exec').addEventListener('click', () => {
+    _wifiForget(btn, name, confirm);
+  });
+}
+
+
+async function _wifiForget(btn, name, confirm) {
+  btn.disabled = true;
+  if (confirm) {
+    const exec = confirm.querySelector('.btn-wifi-forget-exec');
+    if (exec) exec.disabled = true;
+  }
+
+  try {
+    const resp = await fetch('/api/network/wifi/forget', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + state.token,
+      },
+      body: JSON.stringify({ name }),
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.detail || 'HTTP ' + resp.status);
+    }
+    if (confirm) confirm.remove();
+    btn.textContent = 'Forget';
+    setTimeout(loadNetwork, 1000);
+  } catch (err) {
+    if (confirm) {
+      const msg = confirm.querySelector('.wifi-connect-msg');
+      if (msg) {
+        msg.textContent = 'Error \u2014 ' + err.message;
+        msg.className = 'wifi-connect-msg result-error';
+      } else {
+        const newMsg = document.createElement('span');
+        newMsg.className = 'wifi-connect-msg result-error';
+        newMsg.textContent = 'Error \u2014 ' + err.message;
+        confirm.appendChild(newMsg);
+      }
+    }
+    btn.textContent = 'Forget';
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 
 // ── Network — Tailscale Interface Card ───────────────────────────────────────

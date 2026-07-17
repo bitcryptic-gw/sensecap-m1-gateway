@@ -736,7 +736,7 @@ async def api_network_wifi_scan(_: Auth):
     if rc3 != 0:
         return {"available": True, "networks": []}
 
-    seen: dict[str, int] = {}
+    seen: dict[str, dict] = {}
     for line in out.splitlines():
         line = line.strip()
         if not line:
@@ -747,14 +747,16 @@ async def api_network_wifi_scan(_: Auth):
             continue
         try:
             sig = int(parts[1]) if len(parts) > 1 else 0
-            if ssid not in seen or sig > seen[ssid]:
-                seen[ssid] = sig
+            security = parts[2] if len(parts) > 2 else ""
+            entry = seen.get(ssid)
+            if entry is None or sig > entry["signal"]:
+                seen[ssid] = {"signal": sig, "open": (security == "")}
         except (ValueError, IndexError):
             pass
 
     networks = [
-        {"ssid": ssid, "signal": sig}
-        for ssid, sig in sorted(seen.items(), key=lambda x: -x[1])
+        {"ssid": ssid, "signal": e["signal"], "open": e["open"]}
+        for ssid, e in sorted(seen.items(), key=lambda x: -x[1]["signal"])
     ]
     return {"available": True, "networks": networks}
 
@@ -766,7 +768,7 @@ def api_network_wifi_saved(_: Auth):
     if not Path("/usr/bin/nmcli").exists():
         return {"saved": []}
     rc, out, _ = _run(
-        ["/usr/bin/nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+        ["/usr/bin/nmcli", "-t", "-f", "NAME,TYPE,TIMESTAMP", "connection", "show"],
         timeout=10,
     )
     if rc != 0:
@@ -779,12 +781,37 @@ def api_network_wifi_saved(_: Auth):
         parts = line.split(":")
         name = parts[0] if len(parts) > 0 else ""
         ctype = parts[1] if len(parts) > 1 else ""
-        if "wireless" in ctype.lower() or "wifi" in ctype.lower():
-            saved.append({"name": name, "type": ctype})
+        if not ("wireless" in ctype.lower() or "wifi" in ctype.lower()):
+            continue
+        ts_str = parts[2] if len(parts) > 2 else ""
+        try:
+            timestamp = int(ts_str) if ts_str else 0
+        except ValueError:
+            timestamp = 0
+        saved.append({"name": name, "type": ctype, "timestamp": timestamp})
     return {"saved": saved}
 
 
 # ── Network — WiFi Connect ───────────────────────────────────────────────────
+
+WIFI_UNKNOWN_CONNECTION_RE = re.compile(r"(unknown connection|cannot delete unknown)", re.IGNORECASE)
+
+
+def _friendly_wifi_error(raw: str) -> str:
+    if "802-11-wireless-security.psk" in raw and "property is invalid" in raw:
+        return ("Password must be 8\u201363 characters (or a 64-character hex key). "
+                "Please check the password and try again.")
+    if "Secrets were required" in raw and "not provided" in raw:
+        return ("Connection failed \u2014 this usually means the password was incorrect, "
+                "but it can also happen if the network is out of range or temporarily "
+                "unavailable. Please check the password and try again.")
+    if "CONNECT:FAILED:profile creation failed" in raw:
+        return "Failed to save network settings. Please try again."
+    cleaned = raw.strip()
+    if len(cleaned) > 300:
+        cleaned = cleaned[:300] + "\u2026"
+    return f"Connection failed: {cleaned}"
+
 
 @app.post("/api/network/wifi/connect")
 async def api_network_wifi_connect(_: Auth, request: Request):
@@ -797,15 +824,14 @@ async def api_network_wifi_connect(_: Auth, request: Request):
         raise HTTPException(status_code=422, detail="ssid is required")
     if len(ssid) > 128:
         raise HTTPException(status_code=422, detail="ssid too long")
-    if not password:
-        raise HTTPException(status_code=422, detail="password is required")
     if len(password) > 128:
         raise HTTPException(status_code=422, detail="password too long")
     rc, out, err = await _run_async(
         [WIFI_CONNECT_WRAPPER, "connect", ssid, password], timeout=35,
     )
     if rc != 0:
-        detail = err.strip() or out.strip() or "connection failed"
+        raw = f"{out.strip()} {err.strip()}".strip()
+        detail = _friendly_wifi_error(raw or "connection failed")
         raise HTTPException(status_code=500, detail=detail)
     return {"ok": True}
 
@@ -824,7 +850,28 @@ async def api_network_wifi_connect_saved(_: Auth, request: Request):
         [WIFI_CONNECT_WRAPPER, "connect-saved", name], timeout=35,
     )
     if rc != 0:
-        detail = err.strip() or out.strip() or "connection failed"
+        raw = f"{out.strip()} {err.strip()}".strip()
+        detail = _friendly_wifi_error(raw or "connection failed")
+        raise HTTPException(status_code=500, detail=detail)
+    return {"ok": True}
+
+
+@app.post("/api/network/wifi/forget")
+async def api_network_wifi_forget(_: Auth, request: Request):
+    if not Path(WIFI_CONNECT_WRAPPER).exists():
+        raise HTTPException(status_code=503, detail="wifi-connect-wrapper not installed")
+    body = await request.json()
+    name = str(body.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+    if len(name) > 128:
+        raise HTTPException(status_code=422, detail="name too long")
+    rc, out, err = await _run_async(
+        [WIFI_CONNECT_WRAPPER, "forget", name], timeout=15,
+    )
+    if rc != 0:
+        raw = f"{out.strip()} {err.strip()}".strip()
+        detail = _friendly_wifi_error(raw or "forget failed")
         raise HTTPException(status_code=500, detail=detail)
     return {"ok": True}
 
