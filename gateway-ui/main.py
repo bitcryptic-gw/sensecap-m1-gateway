@@ -897,7 +897,12 @@ def _check_tailscale_hostname_mismatch() -> tuple[bool, str, str | None]:
     self_info = data.get("Self", {})
     if not isinstance(self_info, dict):
         return False, system_hostname, None
-    ts_hostname = self_info.get("HostName", "")
+    dns_name = self_info.get("DNSName", "")
+    if not dns_name:
+        return False, system_hostname, None
+    dns_name = dns_name.rstrip(".")
+    dot_idx = dns_name.find(".")
+    ts_hostname = dns_name[:dot_idx] if dot_idx != -1 else dns_name
     if not ts_hostname:
         return False, system_hostname, None
     m = re.match(r"^(.+)-\d+$", ts_hostname)
