@@ -295,8 +295,41 @@ int main(int argc, char *argv[]) {
     /* Restart services as root */
     int restart_failed = 0;
     for (int i = 0; i < svc_count; i++) {
-        int rc = run((char *[]){"/usr/bin/systemctl", "restart", svc_list[i], NULL});
-        printf("restarted %s (exit %d)\n", svc_list[i], rc);
+        int rc;
+        if (strcmp(svc_list[i], "gateway-ui.service") == 0) {
+            /* gateway-ui.service is restarting its own parent process
+               (this binary was spawned by main.py). A normal blocking
+               systemctl restart deadlocks: systemd waits for the old
+               main.py to stop gracefully, but main.py is still reading
+               our stdout via the SSE stream. Use --no-block to queue
+               the restart asynchronously; the cgroup detachment above
+               ensures we survive the restart. */
+            rc = run((char *[]){"/usr/bin/systemctl", "restart", "--no-block", svc_list[i], NULL});
+            printf("restarted %s (exit %d)\n", svc_list[i], rc);
+
+            /* --no-block only confirms the restart was queued, not that
+               the service actually came back up. Poll briefly so we can
+               still report a meaningful result for gateway-ui.service. */
+            int gw_ui_healthy = 0;
+            for (int poll = 0; poll < 10; poll++) {
+                usleep(500000);
+                char active_buf[64] = "";
+                int active_rc = run_capture(
+                    (char *[]){"/usr/bin/systemctl", "is-active", "gateway-ui.service", NULL},
+                    active_buf, sizeof(active_buf));
+                if (active_rc == 0 && strncmp(active_buf, "active", 6) == 0) {
+                    gw_ui_healthy = 1;
+                    break;
+                }
+            }
+            if (!gw_ui_healthy) {
+                fprintf(stderr, "WARNING: gateway-ui.service did not report 'active' within 5s of restart\n");
+                restart_failed = 1;
+            }
+        } else {
+            rc = run((char *[]){"/usr/bin/systemctl", "restart", svc_list[i], NULL});
+            printf("restarted %s (exit %d)\n", svc_list[i], rc);
+        }
         if (rc != 0)
             restart_failed = 1;
     }
