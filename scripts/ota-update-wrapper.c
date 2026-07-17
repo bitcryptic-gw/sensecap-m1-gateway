@@ -8,6 +8,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <errno.h>
+#include <signal.h>
 
 #define REPO_DIR "/opt/gateway"
 #define ALLOWED_UNITS \
@@ -84,6 +85,12 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "ERROR: only gateway-ui user may invoke this wrapper\n");
         return 1;
     }
+
+    /* Ignore SIGPIPE — when main.py's SSE connection is closed during
+       gateway-ui.service restart, writes to stdout will return EPIPE
+       instead of killing the process, so we can finish writing
+       /etc/gateway-version and exit with a meaningful return code. */
+    signal(SIGPIPE, SIG_IGN);
 
     if (argc < 2) {
         fprintf(stderr, "ERROR: usage: ota-update-wrapper --changes | <service1,service2,...>\n");

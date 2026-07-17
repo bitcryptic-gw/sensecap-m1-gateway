@@ -1508,4 +1508,5 @@ if __name__ == "__main__":
         host=str(CONFIG.get("bind_host", "0.0.0.0")),
         port=int(CONFIG.get("port", 8080)),
         log_level="info",
+        timeout_graceful_shutdown=3,
     )
