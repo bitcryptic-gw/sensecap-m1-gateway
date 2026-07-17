@@ -311,7 +311,7 @@ int main(int argc, char *argv[]) {
                the service actually came back up. Poll briefly so we can
                still report a meaningful result for gateway-ui.service. */
             int gw_ui_healthy = 0;
-            for (int poll = 0; poll < 10; poll++) {
+            for (int poll = 0; poll < 30; poll++) {
                 usleep(500000);
                 char active_buf[64] = "";
                 int active_rc = run_capture(
@@ -323,7 +323,7 @@ int main(int argc, char *argv[]) {
                 }
             }
             if (!gw_ui_healthy) {
-                fprintf(stderr, "WARNING: gateway-ui.service did not report 'active' within 5s of restart\n");
+                fprintf(stderr, "WARNING: gateway-ui.service did not report 'active' within 15s of restart\n");
                 restart_failed = 1;
             }
         } else {
