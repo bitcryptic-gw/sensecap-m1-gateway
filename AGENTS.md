@@ -32,6 +32,7 @@ boot/         — boot config fragments (config.txt, future bootstrap.sh)
 | `gateway-ui.service` | FastAPI (Python) | Web UI, port 8080, Bearer token auth |
 | `readsb.service` | readsb | ADS-B decoder (Wingbits) |
 | `wingbits.service` | wingbits client | Wingbits data feed + GeoSigner |
+| `tailscale-autoconnect.timer` | `scripts/tailscale-autoconnect.sh` | Auto re-auth with saved key (`/etc/gateway/tailscale.key`, 0600 root:root) when tailscaled reports NeedsLogin |
 
 ## Key hardware & identity
 

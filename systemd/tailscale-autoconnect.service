@@ -1,0 +1,25 @@
+[Unit]
+Description=Tailscale automatic re-authentication (saved auth key)
+Documentation=https://github.com/bitcryptic-gw/sensecap-m1-gateway
+# Only meaningful once an auth key has been persisted (by first-boot.sh or a
+# successful web-UI auth). Without the key file the unit is skipped cleanly.
+ConditionPathExists=/etc/gateway/tailscale.key
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/gateway/scripts/tailscale-autoconnect.sh
+# Worst-case degraded-path budget as the script actually executes:
+# initial settle 60s + probe 10s + tailscaled restart 92s (bounded by its
+# TimeoutStopSec=90 default; 15s observed wedged) + post-restart settle 60s
+# + `tailscale up --timeout=90s` 90s + ~10s CLI overheads ≈ 322s.
+# Default 90s would kill the recovery mid-flight; 420 leaves ~30% margin
+# and stays under the 10-min timer cadence (no job overlap).
+TimeoutStartSec=420
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tailscale-autoconnect
+
+[Install]
+WantedBy=multi-user.target

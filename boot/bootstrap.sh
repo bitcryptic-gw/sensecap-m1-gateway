@@ -127,7 +127,8 @@ echo "[firstrun] $(date '+%H:%M:%S') Completed: boot config"
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: systemd units"
 echo "--- Systemd Units ---"
-for unit in "${REPO_DIR}"/systemd/*.service; do
+for unit in "${REPO_DIR}"/systemd/*.service "${REPO_DIR}"/systemd/*.timer; do
+    [ -e "$unit" ] || continue
     name=$(basename "$unit")
     cp "$unit" "/etc/systemd/system/${name}"
     info "Copied ${name}"
@@ -143,6 +144,9 @@ echo "[firstrun] $(date '+%H:%M:%S') Completed: systemd units"
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: tailscale"
 echo "--- Tailscale ---"
+# Root-only secrets directory (holds the persisted Tailscale auth key used
+# by tailscale-autoconnect for unattended re-authentication).
+install -d -m 0755 -o root -g root /etc/gateway
 if [ -x "${REPO_DIR}/scripts/install-tailscale.sh" ]; then
     if "${REPO_DIR}/scripts/install-tailscale.sh"; then
         green "Tailscale installed"

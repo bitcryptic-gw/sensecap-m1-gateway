@@ -927,13 +927,41 @@ def api_network_tailscale(_: Auth):
         return {"status": "stopped", "service": ts_info}
 
     rc, out, _ = _run([_TAILSCALE, "status", "--json"])
-    if rc != 0:
-        return {"status": "error", "detail": out.strip() or "tailscale status failed"}
-
     try:
         data = json.loads(out)
     except json.JSONDecodeError:
+        if rc != 0:
+            return {"status": "error", "detail": out.strip() or "tailscale status failed"}
         return {"status": "error", "detail": "failed to parse tailscale status"}
+
+    backend_state = str(data.get("BackendState") or "")
+
+    # Version — parse first line of `tailscale version`
+    version = "unknown"
+    rc4, ver_out, _ = _run([_TAILSCALE, "version"])
+    if rc4 == 0:
+        version = ver_out.splitlines()[0].strip() if ver_out.strip() else "unknown"
+
+    if backend_state == "NeedsLogin":
+        # Logged out — typically the machine record was deleted from the
+        # admin console. Surface the interactive re-auth URL (preserves all
+        # prefs, no key entry) and whether the persisted key exists, so the
+        # frontend can explain that tailscale-autoconnect will retry.
+        return {
+            "status": "needs-login",
+            "backend_state": backend_state,
+            "version": version,
+            "auth_url": str(data.get("AuthURL") or ""),
+            "auto_reauth_key_present": Path("/etc/gateway/tailscale.key").exists(),
+        }
+
+    if backend_state and backend_state != "Running":
+        # NoState/Starting (still dialling control) or Stopped (tailscale down)
+        return {
+            "status": "starting" if backend_state in ("NoState", "Starting") else "disconnected",
+            "backend_state": backend_state,
+            "version": version,
+        }
 
     self_info = data.get("Self", {})
     online = self_info.get("Online", False)
@@ -957,16 +985,11 @@ def api_network_tailscale(_: Auth):
         except (json.JSONDecodeError, AttributeError):
             pass
 
-    # Version — parse first line of `tailscale version`
-    version = "unknown"
-    rc4, ver_out, _ = _run([_TAILSCALE, "version"])
-    if rc4 == 0:
-        version = ver_out.splitlines()[0].strip() if ver_out.strip() else "unknown"
-
     ts_mismatch, _, ts_hostname_actual = _check_tailscale_hostname_mismatch()
     result = {
         "status": "connected",
         "connected": True,
+        "backend_state": backend_state,
         "online": online,
         "ip": ip,
         "ips": ips,

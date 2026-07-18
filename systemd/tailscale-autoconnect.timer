@@ -1,0 +1,9 @@
+[Unit]
+Description=Periodic Tailscale auto re-authentication check
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

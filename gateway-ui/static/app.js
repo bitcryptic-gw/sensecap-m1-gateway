@@ -935,6 +935,21 @@ function renderTailscaleInterface(d) {
     banner.classList.add('hidden');
     return;
   }
+  if (d.status === 'needs-login') {
+    const authUrl = (typeof d.auth_url === 'string' && /^https:\/\/[A-Za-z0-9./_-]+$/.test(d.auth_url)) ? d.auth_url : '';
+    el.innerHTML = kv([
+      ['Status', '<span class="badge badge-yellow">● Needs login</span>'],
+      ['Version', d.version ? `<code>${d.version}</code>` : '<span class="dim">—</span>'],
+    ]) +
+      '<p class="hint mt">Tailscale is logged out — this usually means the device\'s machine record was removed from the Tailscale admin console. ' +
+      (d.auto_reauth_key_present
+        ? 'A saved auth key is present: the gateway retries authentication automatically (within ~10 minutes). If this state persists, the saved key may be revoked or expired — paste a fresh key below.'
+        : 'No saved auth key is present, so automatic recovery is disabled. Paste an auth key below, or use the link to re-authenticate in the browser (preserves all settings, no key needed).') +
+      '</p>' +
+      (authUrl ? `<p class="mt"><a class="btn btn-primary" href="${authUrl}" target="_blank" rel="noopener">Re-authenticate in browser</a></p>` : '');
+    banner.classList.add('hidden');
+    return;
+  }
   if (d.status !== 'connected') {
     el.innerHTML = `<div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-yellow">● ${d.status}</span></div>`;
     banner.classList.add('hidden');

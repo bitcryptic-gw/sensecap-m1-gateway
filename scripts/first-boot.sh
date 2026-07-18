@@ -156,21 +156,35 @@ else
 fi
 
 # --- Tailscale setup ---
+TS_KEY_FILE="/etc/gateway/tailscale.key"
 if [ -z "${TAILSCALE_AUTHKEY:-}" ]; then
     log "TAILSCALE_AUTHKEY not set — skipping Tailscale setup"
-    log "To configure Tailscale later: tailscale up --authkey=<key> --hostname=\$(hostname)"
+    log "To configure Tailscale later: use the web UI Network tab (or tailscale up --auth-key=<key>)"
 elif ! command -v tailscale &>/dev/null; then
     log "WARNING: TAILSCALE_AUTHKEY is set but tailscale is not installed — skipping"
 else
     log "Configuring Tailscale..."
-    if tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="$(hostname)"; then
+    # Persist the auth key (0600 root:root) so tailscale-autoconnect can
+    # re-authenticate unattended if this device's machine record is ever
+    # deleted from the admin console. Deliberate, conscious trade-off: a
+    # resting key on disk beats an unreachable remote device.
+    install -d -m 0755 -o root -g root /etc/gateway
+    (umask 077; printf '%s' "$TAILSCALE_AUTHKEY" > "$TS_KEY_FILE")
+    chown root:root "$TS_KEY_FILE"
+    chmod 600 "$TS_KEY_FILE"
+    log "Auth key persisted to ${TS_KEY_FILE} (0600 root:root)"
+    # Explicit flags only — never --reset (it silently wipes prefs).
+    # No --hostname: the machine name derives from the OS hostname set
+    # earlier; setting the hostname pref would force every future re-auth
+    # to re-specify it.
+    if tailscale up --auth-key="file:${TS_KEY_FILE}" --timeout=120s; then
         log "Tailscale connected as $(hostname)"
     else
-        log "WARNING: tailscale up failed — continuing without Tailscale"
+        log "WARNING: tailscale up failed — tailscale-autoconnect.timer will retry with the saved key"
     fi
 fi
 
-# Always scrub the auth key from config.env (one-time use, regardless of outcome above)
+# Always scrub the auth key from config.env (it now lives in ${TS_KEY_FILE}, root-only)
 sed -i 's/^TAILSCALE_AUTHKEY=.*/TAILSCALE_AUTHKEY=/' /opt/gateway/config.env || true
 log "TAILSCALE_AUTHKEY scrubbed from config.env"
 
@@ -208,6 +222,18 @@ if ! id -u gateway-ui &>/dev/null; then
     log "Created system user: gateway-ui (groups: systemd-journal, i2c)"
 else
     log "User gateway-ui already exists — skipping"
+fi
+
+# Point tailscaled's operator at the (now-existing) gateway-ui user.
+# Done here rather than in the earlier Tailscale section because the user
+# only exists from this point on. Re-applied on every re-auth by
+# tailscale-wrapper and tailscale-autoconnect.sh.
+if command -v tailscale &>/dev/null; then
+    if tailscale set --operator=gateway-ui 2>/dev/null; then
+        log "Tailscale operator set to gateway-ui"
+    else
+        log "WARNING: could not set Tailscale operator (Tailscale not authenticated yet?)"
+    fi
 fi
 
 # Fix ownership of files that bootstrap.sh may have created before

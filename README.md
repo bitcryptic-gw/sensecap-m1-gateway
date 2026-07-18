@@ -150,8 +150,10 @@ Tailscale is optional and managed entirely from the **Network** tab in the web U
 
 **Setup:**
 1. Navigate to the Network tab → Tailscale → Setup/Auth card
-2. Paste a one-time auth key from [tailscale.com/settings/keys](https://tailscale.com/settings/keys)
+2. Paste an auth key from [tailscale.com/settings/keys](https://tailscale.com/settings/keys) — a **reusable, pre-approved** key is recommended (see below)
 3. Click **Connect** — the gateway authenticates and the status card updates immediately
+
+**Automatic recovery:** on every successful Connect the auth key is persisted to `/etc/gateway/tailscale.key` (`0600 root:root`). If the device is ever logged out — e.g. its machine record is deleted from the Tailscale admin console — `tailscale-autoconnect.timer` re-authenticates with the saved key automatically (at boot and every 10 minutes), preserving SSH/routes/operator settings. This is a deliberate trade-off: a resting key on disk beats an unreachable remote device. Use a reusable key so recovery works more than once; with a one-time key, recovery falls back to manual re-auth via the UI. To opt out, delete the key file. If Tailscale reports **Needs login** in the UI, a one-click "Re-authenticate in browser" link is shown as a manual fallback.
 
 **Options (available once connected):**
 - **Subnet routing** — advertise the gateway's local subnet to your Tailnet
