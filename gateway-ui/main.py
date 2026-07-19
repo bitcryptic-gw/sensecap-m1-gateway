@@ -51,6 +51,7 @@ HELIUM_CONF2  = "/opt/gateway/config/settings.toml"
 _SYSTEMCTL    = "/bin/systemctl"
 _APPLY_BAND     = "/opt/gateway/scripts/apply-band.sh"
 _APPLY_TZ       = "/opt/gateway/scripts/apply-timezone.sh"
+_APPLY_HOSTNAME = "/opt/gateway/scripts/apply-hostname.sh"
 _TAILSCALE    = "/usr/bin/tailscale"
 _TS_WRAPPER   = "/usr/local/bin/tailscale-wrapper"
 _OTA_WRAPPER  = "/usr/local/bin/ota-update-wrapper"
@@ -416,7 +417,7 @@ def api_sysinfo(_: Auth):
             except (ValueError, TypeError):
                 pass
 
-    ts_mismatch, sys_hostname, ts_hostname_actual = _check_tailscale_hostname_mismatch()
+    ts_mismatch, sys_hostname, ts_hostname_actual, ts_mismatch_type = _check_tailscale_hostname_mismatch()
     result = {
         "cpu_temp":      cpu,
         "memory":        mem_str,
@@ -426,6 +427,7 @@ def api_sysinfo(_: Auth):
         "mem_used_pct":  mem_pct,
         "disk_used_pct": disk_pct,
         "tailscale_hostname_mismatch": ts_mismatch,
+        "tailscale_hostname_mismatch_type": ts_mismatch_type,
     }
     if ts_mismatch:
         result["tailscale_hostname_actual"] = ts_hostname_actual
@@ -537,6 +539,59 @@ async def api_set_timezone(_: Auth, request: Request):
     if rc != 0:
         raise HTTPException(status_code=500, detail=err or "apply-timezone failed")
     return {"ok": True, "output": out}
+
+
+# ── Hostname ──────────────────────────────────────────────────────────────────
+
+HOSTNAME_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$")
+
+
+def _tailscale_hostname() -> str | None:
+    if not Path(_TAILSCALE).exists():
+        return None
+    rc, out, _ = _run([_TAILSCALE, "status", "--json"])
+    if rc != 0:
+        return None
+    try:
+        data = json.loads(out)
+    except (json.JSONDecodeError, OSError):
+        return None
+    self_info = data.get("Self", {})
+    if not isinstance(self_info, dict):
+        return None
+    dns_name = self_info.get("DNSName", "").rstrip(".")
+    if not dns_name:
+        return None
+    dot_idx = dns_name.find(".")
+    return dns_name[:dot_idx] if dot_idx != -1 else dns_name
+
+
+@app.get("/api/hostname")
+def api_get_hostname(_: Auth):
+    return {
+        "hostname": socket.gethostname(),
+        "tailscale_name": _tailscale_hostname(),
+    }
+
+
+@app.post("/api/hostname")
+async def api_set_hostname(_: Auth, request: Request):
+    body = await request.json()
+    name = str(body.get("hostname", "")).strip()
+    if not HOSTNAME_RE.fullmatch(name):
+        raise HTTPException(status_code=400, detail="Invalid hostname — must be alphanumeric and hyphens, not start or end with a hyphen")
+    if len(name) > 63:
+        raise HTTPException(status_code=400, detail="Hostname must be 1–63 characters")
+    rc, out, err = _run(["sudo", _APPLY_HOSTNAME, name], timeout=15)
+    if rc == 0:
+        return {"ok": True, "partial": False, "output": out}
+    elif rc == 2:
+        return JSONResponse(
+            status_code=200,
+            content={"ok": False, "partial": True, "output": out, "detail": err or "Tailscale rename failed — OS hostname was changed"}
+        )
+    else:
+        raise HTTPException(status_code=500, detail=err or "hostname change failed")
 
 
 # ── Service Restart ──────────────────────────────────────────────────────────
@@ -915,39 +970,44 @@ async def api_network_wifi_forget(_: Auth, request: Request):
 
 # ── Network — Tailscale ──────────────────────────────────────────────────────
 
-def _check_tailscale_hostname_mismatch() -> tuple[bool, str, str | None]:
+def _check_tailscale_hostname_mismatch() -> tuple[bool, str, str | None, str]:
     system_hostname = socket.gethostname()
     if not Path(_TAILSCALE).exists():
-        return False, system_hostname, None
+        return False, system_hostname, None, ""
     if not _service_installed("tailscaled.service"):
-        return False, system_hostname, None
+        return False, system_hostname, None, ""
     ts_info = _service_info("tailscaled.service")
     if ts_info["state"] != "active":
-        return False, system_hostname, None
+        return False, system_hostname, None, ""
     try:
         rc, out, _ = _run([_TAILSCALE, "status", "--json"])
         if rc != 0:
-            return False, system_hostname, None
+            return False, system_hostname, None, ""
         data = json.loads(out)
     except (json.JSONDecodeError, OSError):
-        return False, system_hostname, None
+        return False, system_hostname, None, ""
     self_info = data.get("Self", {})
     if not isinstance(self_info, dict):
-        return False, system_hostname, None
-    dns_name = self_info.get("DNSName", "")
+        return False, system_hostname, None, ""
+    dns_name = self_info.get("DNSName", "").rstrip(".")
     if not dns_name:
-        return False, system_hostname, None
-    dns_name = dns_name.rstrip(".")
+        return False, system_hostname, None, ""
     dot_idx = dns_name.find(".")
     ts_hostname = dns_name[:dot_idx] if dot_idx != -1 else dns_name
     if not ts_hostname:
-        return False, system_hostname, None
+        return False, system_hostname, None, ""
+
+    # Suffix-collision detection (re-flash duplicate): Tailscale name is
+    # "sensecap-abc123-2" where the base "sensecap-abc123" matches system hostname.
     m = re.match(r"^(.+)-\d+$", ts_hostname)
-    if not m:
-        return False, system_hostname, None
-    if m.group(1) != system_hostname:
-        return False, system_hostname, None
-    return True, system_hostname, ts_hostname
+    if m and m.group(1) == system_hostname:
+        return True, system_hostname, ts_hostname, "suffix"
+
+    # General drift detection: names simply disagree with no suffix pattern.
+    if ts_hostname != system_hostname:
+        return True, system_hostname, ts_hostname, "drift"
+
+    return False, system_hostname, None, ""
 
 
 @app.get("/api/network/tailscale")
@@ -1022,7 +1082,7 @@ def api_network_tailscale(_: Auth):
         except (json.JSONDecodeError, AttributeError):
             pass
 
-    ts_mismatch, _, ts_hostname_actual = _check_tailscale_hostname_mismatch()
+    ts_mismatch, _, ts_hostname_actual, ts_mismatch_type = _check_tailscale_hostname_mismatch()
     result = {
         "status": "connected",
         "connected": True,
@@ -1036,6 +1096,7 @@ def api_network_tailscale(_: Auth):
         "advertised_routes": advertised,
         "ssh_enabled": ssh_enabled,
         "tailscale_hostname_mismatch": ts_mismatch,
+        "tailscale_hostname_mismatch_type": ts_mismatch_type,
     }
     if ts_mismatch:
         result["tailscale_hostname_actual"] = ts_hostname_actual

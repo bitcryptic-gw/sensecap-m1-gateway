@@ -379,6 +379,30 @@
           </div>
         </div>
 
+        <div class="card card-narrow" id="hostname-card">
+          <div class="card-header">Hostname</div>
+          <div class="card-body">
+            <div class="kv-row">
+              <span class="kv-label">System hostname</span>
+              <span id="current-hostname" class="badge badge-info">—</span>
+            </div>
+            <div class="kv-row">
+              <span class="kv-label">Tailscale name</span>
+              <span id="current-ts-name" class="badge badge-info">—</span>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="hostname-input">New hostname</label>
+              <input type="text" id="hostname-input" class="wingbits-input"
+                     placeholder="my-gateway" autocomplete="off" spellcheck="false">
+              <span class="hint">Letters, numbers, and hyphens. Must not start or end with a hyphen.</span>
+            </div>
+            <div class="action-row">
+              <button id="btn-apply-hostname" class="btn btn-primary">Apply Hostname</button>
+              <span id="hostname-result" class="result-msg"></span>
+            </div>
+          </div>
+        </div>
+
         <div class="card" id="system-power-card">
           <div class="card-header">System Power</div>
           <div class="card-body" id="power-body">

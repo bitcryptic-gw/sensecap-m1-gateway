@@ -282,6 +282,7 @@ gateway-ui ALL=(root) NOPASSWD: /bin/systemctl restart pktfwd
 gateway-ui ALL=(root) NOPASSWD: /bin/systemctl restart gateway-rs
 gateway-ui ALL=(root) NOPASSWD: /opt/gateway/scripts/apply-band.sh
 gateway-ui ALL=(root) NOPASSWD: /opt/gateway/scripts/apply-timezone.sh
+gateway-ui ALL=(root) NOPASSWD: /opt/gateway/scripts/apply-hostname.sh
 SUDOERS
 chmod 0440 /etc/sudoers.d/10-gateway-ui
 if visudo -c -f /etc/sudoers.d/10-gateway-ui; then

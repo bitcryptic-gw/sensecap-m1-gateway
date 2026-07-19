@@ -303,6 +303,50 @@ async function applyTimezone() {
   }
 }
 
+// ── Hostname ────────────────────────────────────────────────────────────────
+
+async function loadHostname() {
+  try {
+    const d = await api('/api/hostname');
+    renderHostname(d);
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('hostname-result', e.message, true);
+  }
+}
+
+function renderHostname(d) {
+  document.getElementById('current-hostname').textContent = d.hostname || '—';
+  document.getElementById('current-ts-name').textContent = d.tailscale_name || '—';
+}
+
+async function applyHostname() {
+  const name = document.getElementById('hostname-input').value.trim();
+  if (!name) { showResult('hostname-result', 'Enter a hostname', true); return; }
+  const btn = document.getElementById('btn-apply-hostname');
+  btn.disabled = true;
+  btn.textContent = 'Applying…';
+  try {
+    const r = await api('/api/hostname', 'POST', { hostname: name });
+    if (r.ok) {
+      showResult('hostname-result', `Hostname changed to ${name}`, false);
+    } else if (r.partial) {
+      showResult('hostname-result', `OS hostname changed to ${name}, but Tailscale rename failed — ${r.detail || 'retry from Settings'}`, true);
+    } else {
+      showResult('hostname-result', r.detail || 'Hostname change failed', true);
+    }
+    const d = await api('/api/hostname');
+    renderHostname(d);
+    // Refresh system info and Tailscale display to pick up new hostname everywhere
+    setTimeout(loadNetwork, 1000);
+    setTimeout(loadDashboard, 1000);
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('hostname-result', e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Apply Hostname';
+  }
+}
+
 // ── Applications: Wingbits ───────────────────────────────────────────────────
 
 async function loadWingbits() {
@@ -1009,7 +1053,11 @@ function renderTailscaleInterface(d) {
 
   if (d.tailscale_hostname_mismatch && d.tailscale_hostname_actual) {
     const sysHost = state.sysHostname || 'unknown';
-    banner.innerHTML = `Tailscale hostname mismatch detected — this device is registered as <code>${d.tailscale_hostname_actual}</code> but its system hostname is <code>${sysHost}</code>. This usually means the device was re-flashed and Tailscale auto-renamed it to avoid colliding with a stale prior registration. <a href="https://login.tailscale.com/admin/machines" target="_blank" rel="noopener">Open Tailscale admin console to remove the old entry.</a>`;
+    if (d.tailscale_hostname_mismatch_type === 'drift') {
+      banner.innerHTML = `Hostname mismatch detected — this device's system hostname is <code>${sysHost}</code> but Tailscale has it registered as <code>${d.tailscale_hostname_actual}</code>. This can happen if the hostname was changed while Tailscale was connected. Use Settings to update the hostname, or run <code>tailscale set --hostname=${sysHost}</code> to sync.`;
+    } else {
+      banner.innerHTML = `Tailscale hostname mismatch detected — this device is registered as <code>${d.tailscale_hostname_actual}</code> but its system hostname is <code>${sysHost}</code>. This usually means the device was re-flashed and Tailscale auto-renamed it to avoid colliding with a stale prior registration. <a href="https://login.tailscale.com/admin/machines" target="_blank" rel="noopener">Open Tailscale admin console to remove the old entry.</a>`;
+    }
     banner.classList.remove('hidden');
   } else {
     banner.classList.add('hidden');
@@ -1388,6 +1436,7 @@ async function loadSettings() {
   loadOtaStatus();
   loadNtfyConfig();
   loadTimezones();
+  loadHostname();
 }
 
 async function savePort() {
@@ -1701,6 +1750,9 @@ function wireEvents() {
 
   // Settings — timezone
   document.getElementById('btn-apply-timezone').addEventListener('click', applyTimezone);
+
+  // Settings — hostname
+  document.getElementById('btn-apply-hostname').addEventListener('click', applyHostname);
 
   // Applications — Wingbits setup
   document.getElementById('wingbits-cmd').addEventListener('input', _wingbitsUpdateBtn);
