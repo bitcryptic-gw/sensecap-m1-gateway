@@ -26,7 +26,6 @@ TOKEN_PATH    = Path("/etc/gateway-ui/token")
 GW_CONFIG_DIR = Path("/opt/gateway/config")
 GW_ENV        = Path("/opt/gateway/config.env")
 STATIC_DIR    = Path(__file__).parent / "static"
-GW_RELEASE       = Path("/etc/gateway-release")
 GW_VERSION       = Path("/etc/gateway-version")
 GITHUB_TOKEN_PATH = Path("/etc/gateway-ui/github-token")
 OTA_LOG = Path("/var/log/gateway-ota.log")
