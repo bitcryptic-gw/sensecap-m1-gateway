@@ -100,7 +100,32 @@ git config --system --add safe.directory /opt/gateway
 green "Git safe.directory set for /opt/gateway"
 echo "[firstrun] $(date '+%H:%M:%S') Completed: repo clone"
 
-# ── 3. boot/config.txt ───────────────────────────────────────────────────────
+# ── 3. Timezone ──────────────────────────────────────────────────────────────
+
+echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: timezone"
+echo "--- Timezone ---"
+TIMEZONE="Etc/UTC"
+if [ -f "$ENV_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    TIMEZONE="${TIMEZONE:-Etc/UTC}"
+fi
+# Validate: the value must correspond to a real zoneinfo file.
+if [ ! -f "/usr/share/zoneinfo/${TIMEZONE}" ]; then
+    warn "Invalid TIMEZONE='${TIMEZONE}' — zoneinfo file not found, falling back to Etc/UTC"
+    TIMEZONE="Etc/UTC"
+fi
+CURRENT_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "")
+if [ "$CURRENT_TZ" = "$TIMEZONE" ]; then
+    green "Timezone already set to ${TIMEZONE}"
+else
+    timedatectl set-timezone "$TIMEZONE"
+    green "Timezone set to ${TIMEZONE} (was: ${CURRENT_TZ:-none})"
+fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: timezone"
+
+# ── 4. boot/config.txt ───────────────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: boot config"
@@ -122,7 +147,7 @@ else
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: boot config"
 
-# ── 4. Systemd units ─────────────────────────────────────────────────────────
+# ── 5. Systemd units ─────────────────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: systemd units"
@@ -139,7 +164,7 @@ systemctl daemon-reload
 green "Systemd units installed and enabled"
 echo "[firstrun] $(date '+%H:%M:%S') Completed: systemd units"
 
-# ── 5. Tailscale install ─────────────────────────────────────────────────────
+# ── 6. Tailscale install ─────────────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: tailscale"
@@ -158,7 +183,7 @@ else
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: tailscale"
 
-# ── 6. Wingbits deps ─────────────────────────────────────────────────────────
+# ── 7. Wingbits deps ─────────────────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: wingbits deps"
@@ -171,7 +196,7 @@ else
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: wingbits deps"
 
-# ── 7. Helium gateway binary ───────────────────────────────────────────────
+# ── 8. Helium gateway binary ───────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: helium gateway"
@@ -184,7 +209,7 @@ else
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: helium gateway"
 
-# ── 8. Gateway version ──────────────────────────────────────────────────────
+# ── 9. Gateway version ──────────────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: gateway version"
@@ -195,7 +220,7 @@ chmod 644 /etc/gateway-version
 green "Wrote /etc/gateway-version: ${VERSION_TAG}"
 echo "[firstrun] $(date '+%H:%M:%S') Completed: gateway version"
 
-# ── 9. Setuid wrappers (single source of truth) ─────────────────────────────
+# ── 10. Setuid wrappers (single source of truth) ────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: setuid wrappers"
@@ -208,7 +233,7 @@ else
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: setuid wrappers"
 
-# ── 10. Gateway UI config files ─────────────────────────────────────────────────────────
+# ── 11. Gateway UI config files ─────────────────────────────────────────────────────────
 
 echo ""
 echo "[firstrun] $(date '+%H:%M:%S') Starting: gateway UI config"
@@ -266,7 +291,7 @@ echo "[firstrun] $(date '+%H:%M:%S') Starting: write sentinel"
 touch "$SENTINEL"
 echo "[firstrun] $(date '+%H:%M:%S') Completed: write sentinel"
 
-# ── 11. Post-provisioning summary ─────────────────────────────────────────────
+# ── 12. Post-provisioning summary ─────────────────────────────────────────────
 
 echo ""
 echo "============================================"
