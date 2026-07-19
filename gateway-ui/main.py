@@ -50,7 +50,8 @@ HELIUM_CONF   = "/etc/helium_gateway/settings.toml"
 HELIUM_CONF2  = "/opt/gateway/config/settings.toml"
 
 _SYSTEMCTL    = "/bin/systemctl"
-_APPLY_BAND   = "/opt/gateway/scripts/apply-band.sh"
+_APPLY_BAND     = "/opt/gateway/scripts/apply-band.sh"
+_APPLY_TZ       = "/opt/gateway/scripts/apply-timezone.sh"
 _TAILSCALE    = "/usr/bin/tailscale"
 _TS_WRAPPER   = "/usr/local/bin/tailscale-wrapper"
 _OTA_WRAPPER  = "/usr/local/bin/ota-update-wrapper"
@@ -499,6 +500,43 @@ async def api_set_band(_: Auth, request: Request):
     rc, out, err = _run(["sudo", _APPLY_BAND, region], timeout=30)
     if rc != 0:
         raise HTTPException(status_code=500, detail=err or "apply-band failed")
+    return {"ok": True, "output": out}
+
+
+# ── Timezone ──────────────────────────────────────────────────────────────────
+
+TZ_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_/+\-]+$")
+
+_timezone_cache: list[str] | None = None
+
+
+def _list_timezones() -> list[str]:
+    global _timezone_cache
+    if _timezone_cache is not None:
+        return _timezone_cache
+    rc, out, _ = _run(["timedatectl", "list-timezones"], timeout=10)
+    if rc != 0:
+        return []
+    _timezone_cache = sorted(out.strip().splitlines())
+    return _timezone_cache
+
+
+@app.get("/api/timezones")
+def api_timezones(_: Auth):
+    return {"timezones": _list_timezones(), "current": _env_value("TIMEZONE") or "Etc/UTC"}
+
+
+@app.post("/api/timezone")
+async def api_set_timezone(_: Auth, request: Request):
+    body = await request.json()
+    tz = str(body.get("timezone", ""))
+    if not TZ_RE.fullmatch(tz):
+        raise HTTPException(status_code=400, detail="Invalid timezone format")
+    if not Path(f"/usr/share/zoneinfo/{tz}").exists():
+        raise HTTPException(status_code=400, detail="Unknown timezone")
+    rc, out, err = _run(["sudo", _APPLY_TZ, tz], timeout=15)
+    if rc != 0:
+        raise HTTPException(status_code=500, detail=err or "apply-timezone failed")
     return {"ok": True, "output": out}
 
 

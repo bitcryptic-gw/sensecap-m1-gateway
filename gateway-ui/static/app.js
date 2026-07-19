@@ -263,6 +263,46 @@ async function applyBand() {
   }
 }
 
+// ── Timezone ────────────────────────────────────────────────────────────────
+
+async function loadTimezones() {
+  try {
+    const d = await api('/api/timezones');
+    renderTimezones(d);
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('timezone-result', e.message, true);
+  }
+}
+
+function renderTimezones(d) {
+  const list = document.getElementById('timezone-list');
+  list.innerHTML = d.timezones.map(tz =>
+    `<option value="${tz}">`
+  ).join('');
+  const input = document.getElementById('timezone-input');
+  input.value = d.current || 'Etc/UTC';
+  document.getElementById('current-timezone').textContent = d.current || 'Etc/UTC';
+}
+
+async function applyTimezone() {
+  const tz = document.getElementById('timezone-input').value.trim();
+  if (!tz) return;
+  const btn = document.getElementById('btn-apply-timezone');
+  btn.disabled = true;
+  btn.textContent = 'Applying…';
+  try {
+    await api('/api/timezone', 'POST', { timezone: tz });
+    const d = await api('/api/timezones');
+    renderTimezones(d);
+    showResult('timezone-result', `Timezone set to ${tz}`, false);
+  } catch (e) {
+    if (e.message !== 'unauthorized') showResult('timezone-result', e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Apply Timezone';
+  }
+}
+
 // ── Applications: Wingbits ───────────────────────────────────────────────────
 
 async function loadWingbits() {
@@ -1347,6 +1387,7 @@ async function loadSettings() {
   }
   loadOtaStatus();
   loadNtfyConfig();
+  loadTimezones();
 }
 
 async function savePort() {
@@ -1657,6 +1698,9 @@ function wireEvents() {
 
   // Applications — band
   document.getElementById('btn-apply-band').addEventListener('click', applyBand);
+
+  // Settings — timezone
+  document.getElementById('btn-apply-timezone').addEventListener('click', applyTimezone);
 
   // Applications — Wingbits setup
   document.getElementById('wingbits-cmd').addEventListener('input', _wingbitsUpdateBtn);

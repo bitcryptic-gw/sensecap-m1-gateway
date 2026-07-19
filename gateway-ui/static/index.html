@@ -359,6 +359,26 @@
           </div>
         </div>
 
+        <div class="card card-narrow" id="timezone-card">
+          <div class="card-header">Time &amp; Region</div>
+          <div class="card-body">
+            <div class="kv-row">
+              <span class="kv-label">System timezone</span>
+              <span id="current-timezone" class="badge badge-info">—</span>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="timezone-input">Select timezone</label>
+              <input type="text" id="timezone-input" class="wingbits-input" list="timezone-list"
+                     placeholder="Type to search..." autocomplete="off" spellcheck="false">
+              <datalist id="timezone-list"></datalist>
+            </div>
+            <div class="action-row">
+              <button id="btn-apply-timezone" class="btn btn-primary">Apply Timezone</button>
+              <span id="timezone-result" class="result-msg"></span>
+            </div>
+          </div>
+        </div>
+
         <div class="card" id="system-power-card">
           <div class="card-header">System Power</div>
           <div class="card-body" id="power-body">
