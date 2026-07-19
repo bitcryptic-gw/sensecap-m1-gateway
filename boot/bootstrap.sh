@@ -283,6 +283,40 @@ else
 fi
 echo "[firstrun] $(date '+%H:%M:%S') Completed: gateway UI config"
 
+# ── 12. Python dependencies ───────────────────────────────────────────────────
+
+echo ""
+echo "[firstrun] $(date '+%H:%M:%S') Starting: python dependencies"
+echo "--- Python Dependencies ---"
+REQS="${REPO_DIR}/gateway-ui/requirements.txt"
+if [ -f "$REQS" ]; then
+    ALL_SATISFIED=true
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%%#*}"
+        line="$(echo "$line" | xargs)"
+        [ -z "$line" ] && continue
+        pkg_name="${line%%==*}"
+        pkg_name="${pkg_name%%\[*}"
+        [ -z "$pkg_name" ] && continue
+        req_ver="${line##*==}"
+        inst_ver=$(pip3 show "$pkg_name" 2>/dev/null | awk '/^Version: / {print $2}')
+        if [ -z "$inst_ver" ] || [ "$inst_ver" != "$req_ver" ]; then
+            ALL_SATISFIED=false
+            break
+        fi
+    done < "$REQS"
+    if [ "$ALL_SATISFIED" = true ]; then
+        green "Python dependencies already satisfied"
+    else
+        info "Installing Python dependencies from requirements.txt..."
+        pip3 install --quiet --break-system-packages -r "$REQS"
+        green "Python dependencies installed"
+    fi
+else
+    warn "requirements.txt not found at ${REQS} — skipping pip install"
+fi
+echo "[firstrun] $(date '+%H:%M:%S') Completed: python dependencies"
+
 # --- Write provisioning sentinel ---
 # Must be written only after ALL provisioning steps above have
 # completed successfully.  set -e (line 4) guarantees a failure
@@ -291,7 +325,7 @@ echo "[firstrun] $(date '+%H:%M:%S') Starting: write sentinel"
 touch "$SENTINEL"
 echo "[firstrun] $(date '+%H:%M:%S') Completed: write sentinel"
 
-# ── 12. Post-provisioning summary ─────────────────────────────────────────────
+# ── 13. Post-provisioning summary ─────────────────────────────────────────────
 
 echo ""
 echo "============================================"
