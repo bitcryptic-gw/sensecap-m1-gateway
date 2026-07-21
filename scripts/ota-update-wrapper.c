@@ -205,6 +205,17 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* Sync provisioning state (sudoers grants, user setup, file ownership).
+       Non-fatal: failure logs a warning but does not abort the OTA. */
+    {
+        char *sync_argv[] = {"/bin/bash", REPO_DIR "/scripts/sync-provisioning.sh", NULL};
+        int sync_rc = run(sync_argv);
+        if (sync_rc != 0) {
+            fprintf(stderr, "WARNING: sync-provisioning.sh failed (exit %d) — "
+                            "timezone/hostname features may need a re-run of OTA\n", sync_rc);
+        }
+    }
+
     /* Capture post-pull HEAD */
     char post_head[128] = "";
     run_capture((char *[]){"/usr/bin/git", "rev-parse", "HEAD", NULL},
