@@ -1257,6 +1257,12 @@ async def api_system_version(_: Auth):
                             result["update_available"] = (latest_parts + (0,) * (max_len - len(latest_parts))) > (local_parts + (0,) * (max_len - len(local_parts)))
                         except (ValueError, AttributeError):
                             logging.warning("version comparison failed: local=%s latest=%s", local, latest_ver)
+                else:
+                    logging.warning("GitHub API returned 200 but no usable tag_name (api_system_version)")
+                    result["check_failed"] = True
+            else:
+                logging.warning("GitHub API returned %d (api_system_version)", r.status_code)
+                result["check_failed"] = True
     except Exception as exc:
         logging.warning("GitHub API check failed (api_system_version): %s", exc)
         result["check_failed"] = True
@@ -1633,6 +1639,8 @@ async def _ntfy_notifier():
                                     update_available = (latest_parts + (0,) * (max_len - len(latest_parts))) > (local_parts + (0,) * (max_len - len(local_parts)))
                                 except (ValueError, AttributeError):
                                     pass
+                    else:
+                        logging.warning("GitHub API returned %d (ntfy_notifier)", r.status_code)
             except Exception as exc:
                 logging.warning("GitHub API check failed (ntfy_notifier): %s", exc)
 
