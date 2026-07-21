@@ -1214,7 +1214,12 @@ function renderOtaCard(d) {
   } else {
     document.getElementById('ota-status').classList.remove('hidden');
     document.getElementById('ota-update-available').classList.add('hidden');
-    if (d.latest) {
+    if (d.check_failed) {
+      const el = document.getElementById('ota-check-result');
+      el.textContent = "Couldn't check for updates — try again later";
+      el.className = 'result-msg dim';
+      setTimeout(() => { el.textContent = ''; el.className = 'result-msg'; }, 5000);
+    } else if (d.latest) {
       showResult('ota-check-result', `Latest: ${d.latest} — up to date`, false);
     }
   }

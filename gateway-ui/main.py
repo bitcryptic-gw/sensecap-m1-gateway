@@ -1204,6 +1204,7 @@ async def api_system_version(_: Auth):
         "local": local,
         "latest": None,
         "update_available": False,
+        "check_failed": False,
         "release_url": None,
         "release_notes": None,
     }
@@ -1232,8 +1233,9 @@ async def api_system_version(_: Auth):
                             result["update_available"] = (latest_parts + (0,) * (max_len - len(latest_parts))) > (local_parts + (0,) * (max_len - len(local_parts)))
                         except (ValueError, AttributeError):
                             logging.warning("version comparison failed: local=%s latest=%s", local, latest_ver)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning("GitHub API check failed (api_system_version): %s", exc)
+        result["check_failed"] = True
 
     return result
 
@@ -1607,8 +1609,8 @@ async def _ntfy_notifier():
                                     update_available = (latest_parts + (0,) * (max_len - len(latest_parts))) > (local_parts + (0,) * (max_len - len(local_parts)))
                                 except (ValueError, AttributeError):
                                     pass
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.warning("GitHub API check failed (ntfy_notifier): %s", exc)
 
             # ── First run: set baseline, no alerts ────────────────────────
             if _ntfy_first_run:
