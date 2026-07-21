@@ -394,6 +394,28 @@ def api_sysinfo(_: Auth):
     except Exception:
         cpu = "unavailable"
 
+    uptime = "unavailable"
+    uptime_raw = None
+    try:
+        raw = Path("/proc/uptime").read_text().split()[0]
+        uptime_raw = float(raw)
+        secs = int(uptime_raw)
+        if secs < 60:
+            uptime = "just now"
+        else:
+            mins = secs // 60
+            if mins < 60:
+                uptime = f"{mins}m"
+            else:
+                hrs = mins // 60
+                days = hrs // 24
+                if days:
+                    uptime = f"{days}d {hrs % 24}h"
+                else:
+                    uptime = f"{hrs}h"
+    except Exception:
+        pass
+
     _, mem_out, _ = _run(["free", "-m"])
     mem_str = mem_out.strip() or "unavailable"
 
@@ -422,6 +444,8 @@ def api_sysinfo(_: Auth):
         "cpu_temp":      cpu,
         "memory":        mem_str,
         "disk":          disk_str,
+        "uptime":        uptime,
+        "uptime_raw":    uptime_raw,
         "hostname":      socket.gethostname(),
         "cpu_temp_raw":  cpu_raw,
         "mem_used_pct":  mem_pct,

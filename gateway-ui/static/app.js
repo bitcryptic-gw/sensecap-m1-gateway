@@ -594,6 +594,7 @@ function renderSysinfo(d, showHostname) {
     ['CPU temp', cpuText + cpuBar],
     ['Memory', memLine + barHtml(d.mem_used_pct, barPctClass(d.mem_used_pct || 0))],
     ['Storage', diskLine + barHtml(d.disk_used_pct, barPctClass(d.disk_used_pct || 0))],
+    ['Uptime', `<span>${d.uptime || 'unavailable'}</span>`],
   ];
   if (showHostname && d.hostname) {
     rows.unshift(['Hostname', `<code>${d.hostname}</code>`]);
