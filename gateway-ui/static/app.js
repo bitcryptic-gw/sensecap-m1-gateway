@@ -16,6 +16,8 @@ const state = {
   otaCountdown:    null,
   powerAction:     null,
   powerTimer:      null,
+  rebootArmed:     false,
+  rebootTimer:     null,
   cachedVersion:   null,
 };
 
@@ -1218,13 +1220,29 @@ function renderOtaCard(d) {
   }
 }
 
+function updateHeaderBadge(ver) {
+  const badge = document.getElementById('header-update-badge');
+  if (ver && ver.update_available) {
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
 async function loadOtaStatus() {
+  const btn = document.getElementById('btn-ota-check');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
   try {
     const d = await api('/api/system/version');
     state.cachedVersion = d;
+    updateHeaderBadge(d);
     renderOtaCard(d);
   } catch (e) {
     if (e.message !== 'unauthorized') showResult('ota-check-result', e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Check for updates';
   }
 }
 
@@ -1500,19 +1518,13 @@ async function setHeaderInfo() {
     const ver = await api('/api/system/version');
     state.cachedVersion = ver;
     const headerVer = document.getElementById('header-version');
-    const badge = document.getElementById('header-update-badge');
     if (ver.local && ver.local !== 'unknown') {
       headerVer.textContent = fmtVersion(ver.local);
       headerVer.style.display = '';
-      if (ver.update_available) {
-        badge.classList.remove('hidden');
-      } else {
-        badge.classList.add('hidden');
-      }
     } else {
       headerVer.style.display = 'none';
-      badge.classList.add('hidden');
     }
+    updateHeaderBadge(ver);
     // Re-render OTA card if settings tab is visible
     const settingsPanel = document.getElementById('tab-settings');
     if (settingsPanel && !settingsPanel.classList.contains('hidden')) {
@@ -1528,7 +1540,30 @@ async function startVersionPoll() {
 
 // ── Settings — System Power ──────────────────────────────────────────────────
 
+function disarmReboot() {
+  state.rebootArmed = false;
+  clearTimeout(state.rebootTimer);
+  state.rebootTimer = null;
+  const btn = document.getElementById('btn-power-reboot');
+  btn.textContent = 'Reboot';
+}
+
+function handleRebootClick() {
+  if (!state.rebootArmed) {
+    state.rebootArmed = true;
+    const btn = document.getElementById('btn-power-reboot');
+    btn.textContent = 'Confirm reboot?';
+    state.rebootTimer = setTimeout(disarmReboot, 4000);
+  } else {
+    clearTimeout(state.rebootTimer);
+    state.rebootTimer = null;
+    state.rebootArmed = false;
+    powerExecute('reboot');
+  }
+}
+
 function powerReset() {
+  disarmReboot();
   clearTimeout(state.powerTimer);
   state.powerTimer = null;
   state.powerAction = null;
@@ -1541,6 +1576,7 @@ function powerReset() {
 }
 
 function powerStartConfirm(action) {
+  disarmReboot();
   state.powerAction = action;
   document.getElementById('power-initial').classList.add('hidden');
   const confirmEl = document.getElementById('power-confirm');
@@ -1562,10 +1598,19 @@ function powerStartConfirm(action) {
 async function powerExecute(action) {
   powerReset();
   document.getElementById('power-initial').classList.add('hidden');
+
+  try {
+    await api(`/api/system/${action}`, 'POST');
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      showResult('power-result', `Failed: ${e.message}`, true);
+    }
+    document.getElementById('power-initial').classList.remove('hidden');
+    return;
+  }
+
   if (action === 'reboot') {
-    const rebootingEl = document.getElementById('power-rebooting');
-    rebootingEl.classList.remove('hidden');
-    // Poll sysinfo to detect reconnect
+    document.getElementById('power-rebooting').classList.remove('hidden');
     const poll = setInterval(async () => {
       try {
         const r = await fetch('/api/sysinfo', {
@@ -1579,17 +1624,6 @@ async function powerExecute(action) {
     }, 3000);
   } else {
     document.getElementById('power-shutdown-msg').classList.remove('hidden');
-    return;
-  }
-
-  try {
-    await api(`/api/system/${action}`, 'POST');
-  } catch (e) {
-    if (e.message !== 'unauthorized') {
-      document.getElementById('power-rebooting').classList.add('hidden');
-      document.getElementById('power-initial').classList.remove('hidden');
-      alert(`Power action failed: ${e.message}`);
-    }
   }
 }
 
@@ -1870,7 +1904,7 @@ function wireEvents() {
   });
 
   // Settings — System Power
-  document.getElementById('btn-power-reboot').addEventListener('click', () => powerStartConfirm('reboot'));
+  document.getElementById('btn-power-reboot').addEventListener('click', handleRebootClick);
   document.getElementById('btn-power-shutdown').addEventListener('click', () => powerStartConfirm('shutdown'));
   document.getElementById('power-cancel').addEventListener('click', e => { e.preventDefault(); powerReset(); });
   document.getElementById('power-confirm-text').addEventListener('click', () => {
