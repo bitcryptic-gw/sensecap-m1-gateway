@@ -208,7 +208,7 @@ int main(int argc, char *argv[]) {
     /* Sync provisioning state (sudoers grants, user setup, file ownership).
        Non-fatal: failure logs a warning but does not abort the OTA. */
     {
-        char *sync_argv[] = {"/bin/bash", REPO_DIR "/scripts/sync-provisioning.sh", NULL};
+        char *sync_argv[] = {"/bin/bash", "-p", REPO_DIR "/scripts/sync-provisioning.sh", NULL};
         int sync_rc = run(sync_argv);
         if (sync_rc != 0) {
             fprintf(stderr, "WARNING: sync-provisioning.sh failed (exit %d) — "
