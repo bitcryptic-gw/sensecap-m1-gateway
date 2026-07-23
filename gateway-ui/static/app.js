@@ -1539,9 +1539,11 @@ async function setHeaderInfo() {
   } catch {}
 }
 
+const VERSION_POLL_INTERVAL_MS = 3_600_000; // 1 hour
+
 async function startVersionPoll() {
   await setHeaderInfo();
-  state.verInterval = setInterval(setHeaderInfo, 60_000);
+  state.verInterval = setInterval(setHeaderInfo, VERSION_POLL_INTERVAL_MS);
 }
 
 // ── Settings — System Power ──────────────────────────────────────────────────
