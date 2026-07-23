@@ -34,14 +34,24 @@ fi
 # --- File ownership fixes ---
 for f in \
     /var/log/gateway-ota.log \
-    /etc/gateway-ui/ntfy.json \
-    /etc/gateway-ui/github-token; do
+    /etc/gateway-ui/ntfy.json; do
     if [ -f "$f" ]; then
         chown gateway-ui:gateway-ui "$f" && \
             log "Fixed ownership of ${f} to gateway-ui:gateway-ui" || \
             log "WARNING: Failed to chown ${f}"
     fi
 done
+
+# github-token is a read-only secret — root owns it, service reads via group
+if [ -f /etc/gateway-ui/github-token ]; then
+    cur_owner=$(stat -c '%U:%G' /etc/gateway-ui/github-token 2>/dev/null || true)
+    if [ "$cur_owner" != "root:gateway-ui" ]; then
+        chown root:gateway-ui /etc/gateway-ui/github-token && \
+            chmod 640 /etc/gateway-ui/github-token && \
+            log "Corrected github-token ownership to root:gateway-ui (was ${cur_owner})" || \
+            log "WARNING: Failed to chown /etc/gateway-ui/github-token"
+    fi
+fi
 
 # --- sudoers deployment ---
 cat > /etc/sudoers.d/10-gateway-ui << 'SUDOERS'
